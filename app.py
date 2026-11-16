@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for
 import urllib.parse
 import os
+import re
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -12,38 +13,35 @@ WHATSAPP_NUMERO = "5491161726657"
 
 # Configuración de credenciales y conexión a Google Sheets
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
-CREDENTIALS_FILE = 'credentials.json'  # Archivo JSON de tu cuenta de servicio de Google Cloud
+CREDENTIALS_FILE = 'credentials.json'
 
 def cargar_catalogo_desde_sheets():
-    """
-    Consulta en tiempo real la planilla de Google Sheets 'Catalogo_Matafuegos_1500'.
-    Si ocurre algún problema de conexión, devuelve una lista vacía para evitar caídas.
-    """
     try:
         if not os.path.exists(CREDENTIALS_FILE):
-            print("AVISO: No se encontró el archivo credentials.json localmente.")
             return []
             
         creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
         client = gspread.authorize(creds)
-        
-        # Abrimos la planilla maestra por su nombre exacto en Google Drive
         sheet = client.open("Catalogo_Matafuegos_1500").sheet1
-        
-        # Obtenemos todas las filas como una lista de diccionarios limpios
         registros = sheet.get_all_records()
         
         productos = []
         for index, fila in enumerate(registros):
+            # Limpiamos el precio en formato texto (ej: "$93,840" o "$ 68,000") para convertirlo a número
+            precio_str = str(fila.get("Precio Venta", "0"))
+            precio_num = re.sub(r'[^\d]', '', precio_str)
+            precio_val = int(precio_num) if precio_num else 0
+            
             productos.append({
                 "id": index + 1,
                 "sku": str(fila.get("SKU", f"MAT-{index+1:04d}")),
                 "categoria": str(fila.get("Categoría", "General")),
                 "tipo": str(fila.get("Subcategoría / Tipo", "")),
-                "nombre": str(fila.get("Descripción del Producto", "Artículo de Seguridad")),
+                "nombre": str(fila.get("Descripción del Producto", "Artículo")),
                 "peso": str(fila.get("Capacidad / Medida", "")),
                 "stock": str(fila.get("Stock Actual", "Disponible")),
-                "precio": str(fila.get("Precio Venta", "$ Consultar")),
+                "precio_str": precio_str,
+                "precio_val": precio_val,
                 "norma": str(fila.get("Norma / Certificación", "IRAM"))
             })
         return productos
@@ -54,39 +52,47 @@ def cargar_catalogo_desde_sheets():
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        # Procesamiento del formulario de presupuesto rápido desde la web
         nombre = request.form.get('nombre', '').strip()
         empresa = request.form.get('empresa', '').strip()
-        servicio = request.form.get('servicio', 'Recarga general de matafuegos')
+        servicio = request.form.get('servicio', 'Recarga general')
         detalles = request.form.get('detalles', '').strip()
         
-        # Cargamos el catálogo desde Google Sheets para buscar precios y cotizar automáticamente
         catalogo = cargar_catalogo_desde_sheets()
-        
         presupuesto_texto = ""
+        total_calculado = 0
         
-        # Lógica inteligente para cruzar lo que pidió el cliente con la planilla de 1.500 productos
         if catalogo:
-            detalles_lower = detalles.lower()
-            servicio_lower = servicio.lower()
+            texto_completo = f"{servicio} {detalles}".lower()
             
-            # Buscamos coincidencias de productos (ej: 10 kg, ABC, CO2, etc.)
-            if "10 kg" in detalles_lower:
-                item_10kg = next((p for p in catalogo if "10 kg" in p['nombre'].lower() or "10 kg" in p['peso'].lower()), None)
-                if item_10kg:
-                    presupuesto_texto += f"\n- {item_10kg['sku']} | {item_10kg['nombre']}: {item_10kg['precio']}"
-                    
-            if "5 kg" in detalles_lower:
-                item_5kg = next((p for p in catalogo if "5 kg" in p['nombre'].lower() or "5 kg" in p['peso'].lower()), None)
-                if item_5kg:
-                    presupuesto_texto += f"\n- {item_5kg['sku']} | {item_5kg['nombre']}: {item_5kg['precio']}"
+            # 1. Buscamos si hay un número de cantidad indicado (ej: "6 matafuegos", "4 unidades", etc.)
+            match_cant = re.search(r'(\d+)\s*(?:matafuegos|unidades|equipos|cargas|litros|kg)?', texto_completo)
+            cantidad = int(match_cant.group(1)) if match_cant and int(match_cant.group(1)) > 0 else 1
+            
+            # 2. Buscamos coincidencia de peso/capacidad (ej: 10 kg, 5 kg, 2.5 kg, 1 kg)
+            match_peso = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:kg|lt|lts)', texto_completo)
+            
+            item_encontrado = None
+            if match_peso:
+                peso_buscado = match_peso.group(1).replace(',', '.')
+                # Buscamos en el catálogo por peso o en el nombre
+                item_encontrado = next((p for p in catalogo if peso_buscado in p['peso'].lower() or peso_buscado in p['nombre'].lower()), None)
+            
+            # Si no encontró por peso específico, buscamos por palabras clave generales (ej: ABC, CO2, Prueba hidráulica)
+            if not item_encontrado:
+                if "hidráulica" in texto_completo or "hidraulica" in texto_completo:
+                    item_encontrado = next((p for p in catalogo if "hidráulica" in p['nombre'].lower() or "hidraulica" in p['nombre'].lower()), None)
+                elif "abc" in texto_completo:
+                    item_encontrado = next((p for p in catalogo if "abc" in p['nombre'].lower() or "abc" in p['tipo'].lower()), None)
+                elif "co2" in texto_completo:
+                    item_encontrado = next((p for p in catalogo if "co2" in p['nombre'].lower() or "co2" in p['tipo'].lower()), None)
 
-            if "hidráulica" in servicio_lower or "hidraulica" in detalles_lower or "prueba" in servicio_lower:
-                item_ph = next((p for p in catalogo if "hidráulica" in p['nombre'].lower() or "hidraulica" in p['nombre'].lower()), None)
-                if item_ph:
-                    presupuesto_texto += f"\n- {item_ph['sku']} | {item_ph['nombre']}: {item_ph['precio']}"
+            # 3. Si encontró el producto, calculamos el subtotal por la cantidad
+            if item_encontrado:
+                subtotal = item_encontrado['precio_val'] * cantidad
+                total_calculado += subtotal
+                presupuesto_texto = f"\n- [{item_encontrado['sku']}] {cantidad}x {item_encontrado['nombre']} ({item_encontrado['peso']}): ${subtotal:,.0f} (Unit: {item_encontrado['precio_str']})"
 
-        # Armamos el mensaje detallado para tu WhatsApp
+        # Armamos el mensaje final para tu WhatsApp
         texto = f"Hola! Soy {nombre}"
         if empresa:
             texto += f" de {empresa}"
@@ -95,17 +101,16 @@ def index():
             texto += f" Detalles: {detalles}."
             
         if presupuesto_texto:
-            texto += f"\n\n*Estimado basado en catálogo actual:*{presupuesto_texto}"
+            texto += f"\n\n*Presupuesto Automático Catálogo:*{presupuesto_texto}"
+            if total_calculado > 0:
+                texto += f"\n👉 **TOTAL ESTIMADO: ${total_calculado:,.0f}**"
             
         mensaje_encoded = urllib.parse.quote(texto)
         whatsapp_url = f"https://wa.me/{WHATSAPP_NUMERO}?text={mensaje_encoded}"
         
         return redirect(whatsapp_url)
     
-    # Cargamos el catálogo completo desde Google Sheets en tiempo real para la vista web
     catalogo = cargar_catalogo_desde_sheets()
-    
-    # Manejo de búsqueda por término (SKU, nombre, categoría o tipo)
     busqueda = request.args.get('q', '').lower().strip()
     if busqueda:
         catalogo = [
@@ -116,16 +121,8 @@ def index():
                busqueda in p['tipo'].lower()
         ]
     
-    # Mostramos los primeros 60 productos en pantalla para agilizar la renderización,
-    # mientras que el buscador filtra al instante entre los 1.500 ítems de Google Sheets.
     productos_visibles = catalogo[:60]
-    
-    return render_template(
-        'index.html', 
-        productos=productos_visibles, 
-        total_productos=len(catalogo), 
-        busqueda=busqueda
-    )
+    return render_template('index.html', productos=productos_visibles, total_productos=len(catalogo), busqueda=busqueda)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
