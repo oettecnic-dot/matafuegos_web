@@ -54,28 +54,58 @@ def cargar_catalogo_desde_sheets():
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        # Procesamiento del formulario rápido de cotización hacia WhatsApp
+        # Procesamiento del formulario de presupuesto rápido desde la web
         nombre = request.form.get('nombre', '').strip()
         empresa = request.form.get('empresa', '').strip()
         servicio = request.form.get('servicio', 'Recarga general de matafuegos')
         detalles = request.form.get('detalles', '').strip()
         
+        # Cargamos el catálogo desde Google Sheets para buscar precios y cotizar automáticamente
+        catalogo = cargar_catalogo_desde_sheets()
+        
+        presupuesto_texto = ""
+        
+        # Lógica inteligente para cruzar lo que pidió el cliente con la planilla de 1.500 productos
+        if catalogo:
+            detalles_lower = detalles.lower()
+            servicio_lower = servicio.lower()
+            
+            # Buscamos coincidencias de productos (ej: 10 kg, ABC, CO2, etc.)
+            if "10 kg" in detalles_lower:
+                item_10kg = next((p for p in catalogo if "10 kg" in p['nombre'].lower() or "10 kg" in p['peso'].lower()), None)
+                if item_10kg:
+                    presupuesto_texto += f"\n- {item_10kg['sku']} | {item_10kg['nombre']}: {item_10kg['precio']}"
+                    
+            if "5 kg" in detalles_lower:
+                item_5kg = next((p for p in catalogo if "5 kg" in p['nombre'].lower() or "5 kg" in p['peso'].lower()), None)
+                if item_5kg:
+                    presupuesto_texto += f"\n- {item_5kg['sku']} | {item_5kg['nombre']}: {item_5kg['precio']}"
+
+            if "hidráulica" in servicio_lower or "hidraulica" in detalles_lower or "prueba" in servicio_lower:
+                item_ph = next((p for p in catalogo if "hidráulica" in p['nombre'].lower() or "hidraulica" in p['nombre'].lower()), None)
+                if item_ph:
+                    presupuesto_texto += f"\n- {item_ph['sku']} | {item_ph['nombre']}: {item_ph['precio']}"
+
+        # Armamos el mensaje detallado para tu WhatsApp
         texto = f"Hola! Soy {nombre}"
         if empresa:
             texto += f" de {empresa}"
-        texto += f". Necesito asesoramiento / cotización urgente sobre: {servicio}."
+        texto += f". Solicito cotización sobre: {servicio}."
         if detalles:
-            texto += f" Detalles: {detalles}"
+            texto += f" Detalles: {detalles}."
+            
+        if presupuesto_texto:
+            texto += f"\n\n*Estimado basado en catálogo actual:*{presupuesto_texto}"
             
         mensaje_encoded = urllib.parse.quote(texto)
         whatsapp_url = f"https://wa.me/{WHATSAPP_NUMERO}?text={mensaje_encoded}"
         
         return redirect(whatsapp_url)
     
-    # Cargamos el catálogo completo desde Google Sheets en tiempo real
+    # Cargamos el catálogo completo desde Google Sheets en tiempo real para la vista web
     catalogo = cargar_catalogo_desde_sheets()
     
-    # Manejo de búsqueda por término (SKU, nombre o categoría)
+    # Manejo de búsqueda por término (SKU, nombre, categoría o tipo)
     busqueda = request.args.get('q', '').lower().strip()
     if busqueda:
         catalogo = [
@@ -86,8 +116,8 @@ def index():
                busqueda in p['tipo'].lower()
         ]
     
-    # Mostramos los primeros 60 productos en pantalla para agilizar la carga visual, 
-    # mientras el buscador permite filtrar los 1.500 ítems al instante.
+    # Mostramos los primeros 60 productos en pantalla para agilizar la renderización,
+    # mientras que el buscador filtra al instante entre los 1.500 ítems de Google Sheets.
     productos_visibles = catalogo[:60]
     
     return render_template(
