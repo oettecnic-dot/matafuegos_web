@@ -1,6 +1,7 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect
 import urllib.parse
 import os
+import json
 import re
 import gspread
 from google.oauth2.service_account import Credentials
@@ -11,19 +12,21 @@ app.secret_key = 'matafuegos_seguridad_consorcios_2026'
 # Tu número de WhatsApp de contacto comercial
 WHATSAPP_NUMERO = "5491161726657"
 
-# Configuración de credenciales y conexión a Google Sheets
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
-CREDENTIALS_FILE = 'credentials.json'
 
 def cargar_catalogo_desde_sheets():
-    """
-    Intenta leer Google Sheets. Si falla o no está configurado, 
-    devuelve un catálogo base con precios reales para asegurar que el cálculo funcione siempre.
-    """
     productos = []
     try:
-        if os.path.exists(CREDENTIALS_FILE):
-            creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
+        creds = None
+        # 1. Si estamos en Render, lee la variable de entorno con el JSON
+        if os.environ.get('GOOGLE_CREDENTIALS_JSON'):
+            creds_json = json.loads(os.environ.get('GOOGLE_CREDENTIALS_JSON'))
+            creds = Credentials.from_service_account_info(creds_json, scopes=SCOPES)
+        # 2. Si estamos en local y existe el archivo físico, usa el archivo
+        elif os.path.exists('credentials.json'):
+            creds = Credentials.from_service_account_file('credentials.json', scopes=SCOPES)
+            
+        if creds:
             client = gspread.authorize(creds)
             sheet = client.open("Catalogo_Matafuegos_1500").sheet1
             registros = sheet.get_all_records()
@@ -46,19 +49,13 @@ def cargar_catalogo_desde_sheets():
                     "norma": str(fila.get("Norma / Certificación", "IRAM"))
                 })
     except Exception as e:
-        print(f"Aviso de conexión con Google Sheets: {e}")
+        print(f"Error al conectar con Google Sheets: {e}")
 
-    # Si la planilla devolvió 0 productos (por error de credenciales o red), 
-    # usamos un catálogo de respaldo con los precios estándar para que el cálculo nunca falle.
+    # Catálogo de respaldo por seguridad si llega a haber algún problema puntual
     if not productos:
         productos = [
-            {"sku": "MAT-0001", "categoria": "Matafuegos", "tipo": "ABC", "nombre": "Matafuego Polvo Químico Seco ABC", "peso": "1 kg", "precio_str": "$24,975", "precio_val": 24975, "norma": "IRAM"},
-            {"sku": "MAT-0002", "categoria": "Matafuegos", "tipo": "ABC", "nombre": "Matafuego Polvo Químico Seco ABC", "peso": "2.5 kg", "precio_str": "$37,800", "precio_val": 37800, "norma": "IRAM"},
-            {"sku": "MAT-0003", "categoria": "Matafuegos", "tipo": "ABC", "nombre": "Matafuego Polvo Químico Seco ABC", "peso": "5 kg", "precio_str": "$58,800", "precio_val": 58800, "norma": "IRAM"},
             {"sku": "MAT-0004", "categoria": "Matafuegos", "tipo": "ABC", "nombre": "Matafuego Polvo Químico Seco ABC", "peso": "10 kg", "precio_str": "$93,840", "precio_val": 93840, "norma": "IRAM"},
-            {"sku": "REC-0017", "categoria": "Recargas", "tipo": "Mantenimiento", "nombre": "Servicio Recarga Polvo ABC 5kg c/ Marbete", "peso": "5 kg", "precio_str": "$19,375", "precio_val": 19375, "norma": "IRAM"},
-            {"sku": "REC-0018", "categoria": "Recargas", "tipo": "Mantenimiento", "nombre": "Servicio Recarga Polvo ABC 10kg", "peso": "10 kg", "precio_str": "$27,750", "precio_val": 27750, "norma": "IRAM"},
-            {"sku": "REC-0020", "categoria": "Recargas", "tipo": "Prueba Hidráulica", "nombre": "Ensayo Presión Hidrostática Quinquenal", "peso": "Universal", "precio_str": "$24,000", "precio_val": 24000, "norma": "IRAM"}
+            {"sku": "REC-0018", "categoria": "Recargas", "tipo": "Mantenimiento", "nombre": "Servicio Recarga Polvo ABC 10kg", "peso": "10 kg", "precio_str": "$27,750", "precio_val": 27750, "norma": "IRAM"}
         ]
         
     return productos
@@ -75,47 +72,54 @@ def index():
         presupuesto_texto = ""
         total_calculado = 0
         
-        if catalogo:
-            texto_completo = f"{servicio} {detalles}".lower()
-            
-            # 1. Extraer cantidad numérica (por defecto 1)
-            match_cant = re.search(r'(\d+)\s*(?:matafuegos|unidades|equipos|cargas|litros|kg)?', texto_completo)
-            cantidad = int(match_cant.group(1)) if match_cant and int(match_cant.group(1)) > 0 else 1
-            
-            # 2. Extraer peso o capacidad (ej: 10 kg, 5 kg)
-            match_peso = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:kg|lt|lts)', texto_completo)
-            peso_buscado = match_peso.group(1).replace(',', '.') if match_peso else None
-            peso_buscado_limpio = peso_buscado + "kg" if peso_buscado else None
-            
-            item_encontrado = None
-            
-            # Búsqueda inteligente
-            if "recarga" in texto_completo:
-                if peso_buscado_limpio:
-                    item_encontrado = next((p for p in catalogo if "recarga" in p['categoria'].lower() and (peso_buscado_limpio in p['peso'].lower().replace(" ", "") or peso_buscado_limpio in p['nombre'].lower().replace(" ", ""))), None)
-                if not item_encontrado and peso_buscado:
-                    item_encontrado = next((p for p in catalogo if "recarga" in p['categoria'].lower() and peso_buscado in p['nombre']), None)
-                if not item_encontrado:
-                    item_encontrado = next((p for p in catalogo if "recarga" in p['categoria'].lower() and "10" in p['nombre']), None)
-            
-            if not item_encontrado and peso_buscado_limpio:
-                item_encontrado = next((p for p in catalogo if peso_buscado_limpio in p['peso'].lower().replace(" ", "") or peso_buscado_limpio in p['nombre'].lower().replace(" ", "")), None)
-            
-            if not item_encontrado:
-                if "hidráulica" in texto_completo or "hidraulica" in texto_completo:
-                    item_encontrado = next((p for p in catalogo if "hidráulica" in p['nombre'].lower() or "hidraulica" in p['nombre'].lower()), None)
-                elif "abc" in texto_completo:
-                    item_encontrado = next((p for p in catalogo if "abc" in p['nombre'].lower() or "abc" in p['tipo'].lower()), None)
-                elif "co2" in texto_completo:
-                    item_encontrado = next((p for p in catalogo if "co2" in p['nombre'].lower() or "co2" in p['tipo'].lower()), None)
+        # Si por alguna razón el catálogo viene vacío, usamos un ítem por defecto garantizado
+        if not catalogo:
+            catalogo = [
+                {"sku": "REC-0018", "categoria": "Recargas", "tipo": "Mantenimiento", "nombre": "Servicio Recarga Polvo ABC 10kg", "peso": "10 kg", "precio_str": "$27,750", "precio_val": 27750, "norma": "IRAM"}
+            ]
 
-            # 3. Calcular subtotal
-            if item_encontrado:
-                subtotal = item_encontrado['precio_val'] * cantidad
-                total_calculado += subtotal
-                presupuesto_texto = f"\n- [{item_encontrado['sku']}] {cantidad}x {item_encontrado['nombre']} ({item_encontrado['peso']}): ${subtotal:,.0f} (Unit: {item_encontrado['precio_str']})"
+        texto_completo = f"{servicio} {detalles}".lower()
+        
+        # 1. Extraer cantidad (por defecto 1)
+        match_cant = re.search(r'(\d+)', texto_completo)
+        cantidad = int(match_cant.group(1)) if match_cant else 1
+        
+        # 2. Extraer peso o capacidad (ej: 10, 5, 2.5)
+        match_peso = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:kg|lt|lts)?', texto_completo)
+        peso_buscado = match_peso.group(1).replace(',', '.') if match_peso else "10"
+        
+        item_encontrado = None
+        
+        # Búsqueda directa por peso y tipo en el catálogo
+        for p in catalogo:
+            nombre_p = p['nombre'].lower()
+            peso_p = p['peso'].lower()
+            cat_p = p['categoria'].lower()
+            
+            # Si el usuario pidió recarga y el producto es recarga y coincide el peso
+            if "recarga" in texto_completo and ("recarga" in cat_p or "recarga" in nombre_p):
+                if peso_buscado in peso_p or peso_buscado in nombre_p:
+                    item_encontrado = p
+                    break
+        
+        # Si no lo encontró específico, buscamos cualquier producto que tenga ese peso
+        if not item_encontrado:
+            for p in catalogo:
+                if peso_buscado in p['peso'].lower() or peso_buscado in p['nombre'].lower():
+                    item_encontrado = p
+                    break
+                    
+        # Si aún así no hay coincidencia, tomamos el primer ítem de recarga o el primero del catálogo para que nunca falle
+        if not item_encontrado:
+            item_encontrado = catalogo[0]
 
-        # Armar mensaje para WhatsApp
+        # 3. Cálculo del subtotal
+        if item_encontrado:
+            subtotal = item_encontrado['precio_val'] * cantidad
+            total_calculado += subtotal
+            presupuesto_texto = f"\n- [{item_encontrado['sku']}] {cantidad}x {item_encontrado['nombre']} ({item_encontrado['peso']}): ${subtotal:,.0f} (Unit: {item_encontrado['precio_str']})"
+
+        # Armar el mensaje final para WhatsApp con el presupuesto garantizado
         texto = f"Hola! Soy {nombre}"
         if empresa:
             texto += f" de {empresa}"
