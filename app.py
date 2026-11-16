@@ -27,7 +27,6 @@ def cargar_catalogo_desde_sheets():
         
         productos = []
         for index, fila in enumerate(registros):
-            # Limpiamos el precio en formato texto (ej: "$93,840" o "$ 68,000") para convertirlo a número
             precio_str = str(fila.get("Precio Venta", "0"))
             precio_num = re.sub(r'[^\d]', '', precio_str)
             precio_val = int(precio_num) if precio_num else 0
@@ -64,20 +63,30 @@ def index():
         if catalogo:
             texto_completo = f"{servicio} {detalles}".lower()
             
-            # 1. Buscamos si hay un número de cantidad indicado (ej: "6 matafuegos", "4 unidades", etc.)
+            # 1. Extraer la cantidad (por defecto 1 si no se especifica)
             match_cant = re.search(r'(\d+)\s*(?:matafuegos|unidades|equipos|cargas|litros|kg)?', texto_completo)
             cantidad = int(match_cant.group(1)) if match_cant and int(match_cant.group(1)) > 0 else 1
             
-            # 2. Buscamos coincidencia de peso/capacidad (ej: 10 kg, 5 kg, 2.5 kg, 1 kg)
+            # 2. Extraer capacidad o peso (ej: 10 kg, 5 kg)
             match_peso = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:kg|lt|lts)', texto_completo)
+            peso_buscado = match_peso.group(1).replace(',', '.') if match_peso else None
             
             item_encontrado = None
-            if match_peso:
-                peso_buscado = match_peso.group(1).replace(',', '.')
-                # Buscamos en el catálogo por peso o en el nombre
+            
+            # Búsqueda específica si es recarga
+            if "recarga" in texto_completo:
+                # Buscamos primero un servicio de recarga que coincida con el peso o capacidad
+                if peso_buscado:
+                    item_encontrado = next((p for p in catalogo if "recarga" in p['categoria'].lower() and (peso_buscado in p['peso'].lower() or peso_buscado in p['nombre'].lower())), None)
+                # Si no halló por peso exacto en recarga, tomamos una recarga general de 10kg o estándar
+                if not item_encontrado:
+                    item_encontrado = next((p for p in catalogo if "recarga" in p['categoria'].lower() and "10" in p['nombre'].lower()), None)
+            
+            # Si no es recarga o no se encontró, buscamos por peso en el catálogo general de matafuegos
+            if not item_encontrado and peso_buscado:
                 item_encontrado = next((p for p in catalogo if peso_buscado in p['peso'].lower() or peso_buscado in p['nombre'].lower()), None)
             
-            # Si no encontró por peso específico, buscamos por palabras clave generales (ej: ABC, CO2, Prueba hidráulica)
+            # Respaldo por palabras clave generales
             if not item_encontrado:
                 if "hidráulica" in texto_completo or "hidraulica" in texto_completo:
                     item_encontrado = next((p for p in catalogo if "hidráulica" in p['nombre'].lower() or "hidraulica" in p['nombre'].lower()), None)
@@ -86,13 +95,13 @@ def index():
                 elif "co2" in texto_completo:
                     item_encontrado = next((p for p in catalogo if "co2" in p['nombre'].lower() or "co2" in p['tipo'].lower()), None)
 
-            # 3. Si encontró el producto, calculamos el subtotal por la cantidad
+            # 3. Cálculo del subtotal
             if item_encontrado:
                 subtotal = item_encontrado['precio_val'] * cantidad
                 total_calculado += subtotal
                 presupuesto_texto = f"\n- [{item_encontrado['sku']}] {cantidad}x {item_encontrado['nombre']} ({item_encontrado['peso']}): ${subtotal:,.0f} (Unit: {item_encontrado['precio_str']})"
 
-        # Armamos el mensaje final para tu WhatsApp
+        # Armar el mensaje final para WhatsApp
         texto = f"Hola! Soy {nombre}"
         if empresa:
             texto += f" de {empresa}"
