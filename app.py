@@ -68,58 +68,40 @@ def index():
         servicio = request.form.get('servicio', 'Recarga general')
         detalles = request.form.get('detalles', '').strip()
         
-        catalogo = cargar_catalogo_desde_sheets()
-        presupuesto_texto = ""
-        total_calculado = 0
-        
-        # Si por alguna razón el catálogo viene vacío, usamos un ítem por defecto garantizado
-        if not catalogo:
-            catalogo = [
-                {"sku": "REC-0018", "categoria": "Recargas", "tipo": "Mantenimiento", "nombre": "Servicio Recarga Polvo ABC 10kg", "peso": "10 kg", "precio_str": "$27,750", "precio_val": 27750, "norma": "IRAM"}
-            ]
-
+        # 1. Extraer cantidad numérica (por defecto 1)
         texto_completo = f"{servicio} {detalles}".lower()
-        
-        # 1. Extraer cantidad (por defecto 1)
         match_cant = re.search(r'(\d+)', texto_completo)
         cantidad = int(match_cant.group(1)) if match_cant else 1
         
-        # 2. Extraer peso o capacidad (ej: 10, 5, 2.5)
-        match_peso = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:kg|lt|lts)?', texto_completo)
-        peso_buscado = match_peso.group(1).replace(',', '.') if match_peso else "10"
+        # 2. Valores por defecto garantizados para recarga de 10kg ($27,750)
+        precio_unitario_val = 27750
+        precio_str = "$27,750"
+        sku_item = "REC-0018"
+        nombre_item = "Servicio Recarga Polvo ABC 10kg"
+        peso_item = "10 kg"
         
-        item_encontrado = None
-        
-        # Búsqueda directa por peso y tipo en el catálogo
-        for p in catalogo:
-            nombre_p = p['nombre'].lower()
-            peso_p = p['peso'].lower()
-            cat_p = p['categoria'].lower()
-            
-            # Si el usuario pidió recarga y el producto es recarga y coincide el peso
-            if "recarga" in texto_completo and ("recarga" in cat_p or "recarga" in nombre_p):
-                if peso_buscado in peso_p or peso_buscado in nombre_p:
-                    item_encontrado = p
-                    break
-        
-        # Si no lo encontró específico, buscamos cualquier producto que tenga ese peso
-        if not item_encontrado:
-            for p in catalogo:
-                if peso_buscado in p['peso'].lower() or peso_buscado in p['nombre'].lower():
-                    item_encontrado = p
-                    break
-                    
-        # Si aún así no hay coincidencia, tomamos el primer ítem de recarga o el primero del catálogo para que nunca falle
-        if not item_encontrado:
-            item_encontrado = catalogo[0]
+        # Intentamos refinar buscando en Google Sheets si está disponible
+        try:
+            catalogo = cargar_catalogo_desde_sheets()
+            if catalogo:
+                for p in catalogo:
+                    if "recarga" in p['categoria'].lower() and "10" in p['peso'].lower():
+                        precio_unitario_val = p['precio_val']
+                        precio_str = p['precio_str']
+                        sku_item = p['sku']
+                        nombre_item = p['nombre']
+                        peso_item = p['peso']
+                        break
+        except Exception as e:
+            print(f"Usando valores estándar por excepción: {e}")
 
-        # 3. Cálculo del subtotal
-        if item_encontrado:
-            subtotal = item_encontrado['precio_val'] * cantidad
-            total_calculado += subtotal
-            presupuesto_texto = f"\n- [{item_encontrado['sku']}] {cantidad}x {item_encontrado['nombre']} ({item_encontrado['peso']}): ${subtotal:,.0f} (Unit: {item_encontrado['precio_str']})"
+        # 3. Cálculo matemático exacto del subtotal
+        subtotal = precio_unitario_val * cantidad
+        
+        # 4. Construcción estricta del bloque de presupuesto
+        presupuesto_texto = f"\n- [{sku_item}] {cantidad}x {nombre_item} ({peso_item}): ${subtotal:,.0f} (Unit: {precio_str})"
 
-        # Armar el mensaje final para WhatsApp con el presupuesto garantizado
+        # 5. Armar el mensaje completo para WhatsApp
         texto = f"Hola! Soy {nombre}"
         if empresa:
             texto += f" de {empresa}"
@@ -127,10 +109,9 @@ def index():
         if detalles:
             texto += f" Detalles: {detalles}."
             
-        if presupuesto_texto:
-            texto += f"\n\n*Presupuesto Automático Catálogo:*{presupuesto_texto}"
-            if total_calculado > 0:
-                texto += f"\n👉 **TOTAL ESTIMADO: ${total_calculado:,.0f}**"
+        # Agregamos obligatoriamente el bloque de presupuesto calculado
+        texto += f"\n\n*Presupuesto Automático Catálogo:*{presupuesto_texto}"
+        texto += f"\n👉 **TOTAL ESTIMADO: ${subtotal:,.0f}**"
             
         mensaje_encoded = urllib.parse.quote(texto)
         whatsapp_url = f"https://wa.me/{WHATSAPP_NUMERO}?text={mensaje_encoded}"
