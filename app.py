@@ -18,11 +18,9 @@ def cargar_catalogo_desde_sheets():
     productos = []
     try:
         creds = None
-        # 1. Si estamos en Render, lee la variable de entorno con el JSON
         if os.environ.get('GOOGLE_CREDENTIALS_JSON'):
             creds_json = json.loads(os.environ.get('GOOGLE_CREDENTIALS_JSON'))
             creds = Credentials.from_service_account_info(creds_json, scopes=SCOPES)
-        # 2. Si estamos en local y existe el archivo físico, usa el archivo
         elif os.path.exists('credentials.json'):
             creds = Credentials.from_service_account_file('credentials.json', scopes=SCOPES)
             
@@ -51,7 +49,6 @@ def cargar_catalogo_desde_sheets():
     except Exception as e:
         print(f"Error al conectar con Google Sheets: {e}")
 
-    # Catálogo de respaldo por seguridad si llega a haber algún problema puntual
     if not productos:
         productos = [
             {"sku": "MAT-0004", "categoria": "Matafuegos", "tipo": "ABC", "nombre": "Matafuego Polvo Químico Seco ABC", "peso": "10 kg", "precio_str": "$93,840", "precio_val": 93840, "norma": "IRAM"},
@@ -71,53 +68,50 @@ def index():
         
         texto_completo = f"{servicio} {detalles}".lower()
         
-        # 1. Extraer cantidad numérica (por defecto 1)
-        match_cant = re.search(r'(\d+)', texto_completo)
+        # 1. Extracción precisa de la CANTIDAD (número asociado a matafuegos/unidades o primer número si no hay otra pista)
+        match_cant = re.search(r'(\d+)\s*(?:matafuegos|unidades|equipos|cargas)?', texto_completo)
         cantidad = int(match_cant.group(1)) if match_cant else 1
         
-        # 2. Extraer peso o capacidad (ej: 5, 10, 2.5)
-        match_peso = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:kg|lt|lts)?', texto_completo)
+        # 2. Extracción estricta del PESO/KILOS (número seguido obligatoriamente de kg, kilos, lt, lts)
+        match_peso = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:kg|kilos|lt|lts)', texto_completo)
         peso_buscado = match_peso.group(1).replace(',', '.') if match_peso else "10"
         
         # Valores por defecto de respaldo
         precio_unitario_val = 27750
         precio_str = "$27,750"
         sku_item = "REC-0018"
-        nombre_item = f"Servicio / Producto ({peso_buscado}kg)"
+        nombre_item = f"Servicio Recarga Polvo ABC {peso_buscado}kg"
         peso_item = f"{peso_buscado} kg"
         
-        # 3. Búsqueda inteligente en Google Sheets o respaldo
+        # 3. Búsqueda inteligente en Google Sheets o catálogo
         try:
             catalogo = cargar_catalogo_desde_sheets()
             if catalogo:
                 item_encontrado = None
                 
-                # Buscar coincidencia exacta según lo que pidió el usuario (ej: hidráulica o recarga)
+                # Buscar coincidencia exacta por tipo de servicio y el peso real encontrado (ej: 10kg)
                 for p in catalogo:
                     nombre_p = p['nombre'].lower()
                     cat_p = p['categoria'].lower()
                     peso_p = p['peso'].lower()
                     
-                    # Si pide prueba hidráulica
                     if "hidráulica" in texto_completo or "hidraulica" in texto_completo:
                         if "hidráulica" in nombre_p or "hidraulica" in nombre_p or "ensayo" in nombre_p:
                             item_encontrado = p
                             break
-                    # Si pide recarga y coincide el peso
                     elif "recarga" in texto_completo:
                         if "recarga" in cat_p or "recarga" in nombre_p:
                             if peso_buscado in peso_p or peso_buscado in nombre_p:
                                 item_encontrado = p
                                 break
                 
-                # Si no halló por servicio específico, buscamos por el peso exacto en cualquier ítem
+                # Si no halló por servicio específico, buscamos por el peso real (ej: "10" o "10 kg") en cualquier ítem
                 if not item_encontrado:
                     for p in catalogo:
                         if peso_buscado in p['peso'].lower() or peso_buscado in p['nombre'].lower():
                             item_encontrado = p
                             break
                 
-                # Si encontró un producto válido, actualizamos los datos
                 if item_encontrado:
                     precio_unitario_val = item_encontrado['precio_val']
                     precio_str = item_encontrado['precio_str']
@@ -128,13 +122,13 @@ def index():
         except Exception as e:
             print(f"Error al buscar en catálogo: {e}")
 
-        # 4. Cálculo matemático exacto del subtotal
+        # 4. Cálculo matemático exacto
         subtotal = precio_unitario_val * cantidad
         
-        # 5. Construcción del bloque de presupuesto unido al mensaje
+        # 5. Construcción del bloque de presupuesto unificado
         presupuesto_texto = f"\n- [{sku_item}] {cantidad}x {nombre_item} ({peso_item}): ${subtotal:,.0f} (Unit: {precio_str})"
 
-        # 6. Armar el mensaje completo y unificado para WhatsApp
+        # 6. Armar mensaje completo para WhatsApp
         texto = f"Hola! Soy {nombre}"
         if empresa:
             texto += f" de {empresa}"
