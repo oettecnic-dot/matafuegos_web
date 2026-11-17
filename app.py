@@ -68,7 +68,7 @@ def index():
         
         texto_completo = f"{servicio} {detalles}".lower()
         
-        # 1. Extracción precisa de la CANTIDAD (número asociado a matafuegos/unidades o primer número si no hay otra pista)
+        # 1. Extracción precisa de la CANTIDAD (número asociado a matafuegos/unidades o primer número)
         match_cant = re.search(r'(\d+)\s*(?:matafuegos|unidades|equipos|cargas)?', texto_completo)
         cantidad = int(match_cant.group(1)) if match_cant else 1
         
@@ -83,34 +83,52 @@ def index():
         nombre_item = f"Servicio Recarga Polvo ABC {peso_buscado}kg"
         peso_item = f"{peso_buscado} kg"
         
-        # 3. Búsqueda inteligente en Google Sheets o catálogo
+        # 3. Búsqueda inteligente adaptada para Matafuegos, Recargas, Pruebas Hidráulicas y Cartelería/Seguridad
         try:
             catalogo = cargar_catalogo_desde_sheets()
             if catalogo:
                 item_encontrado = None
                 
-                # Buscar coincidencia exacta por tipo de servicio y el peso real encontrado (ej: 10kg)
-                for p in catalogo:
-                    nombre_p = p['nombre'].lower()
-                    cat_p = p['categoria'].lower()
-                    peso_p = p['peso'].lower()
-                    
-                    if "hidráulica" in texto_completo or "hidraulica" in texto_completo:
-                        if "hidráulica" in nombre_p or "hidraulica" in nombre_p or "ensayo" in nombre_p:
+                # A. Si el cliente pide Cartelería / Carteles
+                if "cartel" in texto_completo or "cartelería" in texto_completo or "señalización" in texto_completo:
+                    for p in catalogo:
+                        if "cartel" in p['nombre'].lower() or "cartelería" in p['categoria'].lower() or "señal" in p['nombre'].lower():
                             item_encontrado = p
                             break
-                    elif "recarga" in texto_completo:
-                        if "recarga" in cat_p or "recarga" in nombre_p:
-                            if peso_buscado in peso_p or peso_buscado in nombre_p:
+                    if not item_encontrado:
+                        item_encontrado = next((p for p in catalogo if "cartel" in p['nombre'].lower()), None)
+
+                # B. Si el cliente pide Luces de Emergencia
+                elif "luz" in texto_completo or "emergencia" in texto_completo:
+                    item_encontrado = next((p for p in catalogo if "emergencia" in p['nombre'].lower() or "luz" in p['nombre'].lower()), None)
+
+                # C. Si el cliente pide Soporte, Balde o Gabinete
+                elif "soporte" in texto_completo or "balde" in texto_completo or "gabinete" in texto_completo:
+                    palabra_clave = "soporte" if "soporte" in texto_completo else ("balde" if "balde" in texto_completo else "gabinete")
+                    item_encontrado = next((p for p in catalogo if palabra_clave in p['nombre'].lower()), None)
+
+                # D. Búsqueda estándar para Recargas, Pruebas Hidráulicas y Matafuegos
+                else:
+                    for p in catalogo:
+                        nombre_p = p['nombre'].lower()
+                        cat_p = p['categoria'].lower()
+                        peso_p = p['peso'].lower()
+                        
+                        if "hidráulica" in texto_completo or "hidraulica" in texto_completo:
+                            if "hidráulica" in nombre_p or "hidraulica" in nombre_p or "ensayo" in nombre_p:
                                 item_encontrado = p
                                 break
-                
-                # Si no halló por servicio específico, buscamos por el peso real (ej: "10" o "10 kg") en cualquier ítem
-                if not item_encontrado:
-                    for p in catalogo:
-                        if peso_buscado in p['peso'].lower() or peso_buscado in p['nombre'].lower():
-                            item_encontrado = p
-                            break
+                        elif "recarga" in texto_completo:
+                            if "recarga" in cat_p or "recarga" in nombre_p:
+                                if peso_buscado in peso_p or peso_buscado in nombre_p:
+                                    item_encontrado = p
+                                    break
+                    
+                    if not item_encontrado:
+                        for p in catalogo:
+                            if peso_buscado in p['peso'].lower() or peso_buscado in p['nombre'].lower():
+                                item_encontrado = p
+                                break
                 
                 if item_encontrado:
                     precio_unitario_val = item_encontrado['precio_val']
@@ -133,8 +151,8 @@ def index():
         if empresa:
             texto += f" de {empresa}"
         texto += f". Solicito cotización sobre: {servicio}."
-        if detalles:
-            texto += f" Detalles: {detalles}."
+        if det_limpio := detalles:
+            texto += f" Detalles: {det_limpio}."
             
         texto += f"\n\n*Presupuesto Automático Catálogo:*{presupuesto_texto}"
         texto += f"\n👉 **TOTAL ESTIMADO: ${subtotal:,.0f}**"
