@@ -1,163 +1,141 @@
 <!DOCTYPE html>
-<html lang="es" class="scroll-smooth">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Venta y Recarga de Matafuegos | Seguridad contra Incendios</title>
-    <!-- Tailwind CSS CDN -->
+    <title>Presupuestos y Catálogo | Matafuegos San Miguel</title>
+    <!-- Tailwind CSS CDN para un diseño moderno, limpio y profesional -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- FontAwesome Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body class="bg-slate-950 text-slate-100 font-sans antialiased selection:bg-red-600 selection:text-white">
+<body class="bg-gray-50 text-gray-800 font-sans antialiased">
 
-    <!-- Barra de Navegación -->
-    <header class="sticky top-0 z-50 bg-slate-900/90 backdrop-blur border-b border-slate-800 shadow-sm">
-        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-            <div class="flex items-center space-x-3">
-                <div class="bg-red-600/20 p-2.5 rounded-xl border border-red-600/30">
-                    <i class="fa-solid fa-fire-extinguisher text-red-500 text-2xl"></i>
-                </div>
-                <div>
-                    <span class="text-xl font-bold tracking-tight text-white block">Matafuegos <span class="text-red-500">Seguridad</span></span>
-                    <span class="text-xs text-slate-400">San Miguel y GBA Noroeste</span>
-                </div>
+    <!-- Header / Barra Superior -->
+    <header class="bg-red-700 text-white shadow-md">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold">🔥 Matafuegos & Seguridad San Miguel</h1>
+                <p class="text-red-100 text-sm">Venta, Recargas, Pruebas Hidráulicas y Habilitaciones comerciales</p>
             </div>
-            
-            <nav class="hidden md:flex space-x-6 text-sm font-medium text-slate-300">
-                <a href="#servicios" class="hover:text-red-500 transition">Servicios</a>
-                <a href="#productos" class="hover:text-red-500 transition">Catálogo ({{ total_productos }} ítems)</a>
-                <a href="#presupuesto" class="hover:text-red-500 transition">Presupuesto</a>
-                <a href="#contacto" class="hover:text-red-500 transition">Contacto</a>
-            </nav>
-
-            <a href="https://wa.me/5491161726657?text=Hola,%20necesito%20asesoramiento%20urgente%20sobre%20matafuegos." target="_blank" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2.5 rounded-xl shadow transition flex items-center gap-2 text-sm">
-                <i class="fa-brands fa-whatsapp text-lg"></i>
-                <span class="hidden sm:inline">WhatsApp Directo</span>
-            </a>
+            <div class="mt-3 md:mt-0 text-sm bg-red-800 px-4 py-2 rounded-lg font-medium">
+                📲 WhatsApp Directo: +54 9 11 6172-6657
+            </div>
         </div>
     </header>
 
-    <!-- Sección Hero / Portada -->
-    <section class="relative py-20 px-4 bg-gradient-to-b from-slate-900 to-slate-950 border-b border-slate-800">
-        <div class="max-w-4xl mx-auto text-center space-y-6">
-            <span class="bg-red-600/10 text-red-400 border border-red-600/30 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider">Normas IRAM y Habilitaciones Oficiales</span>
-            <h1 class="text-4xl md:text-6xl font-black text-white tracking-tight">Protección y Seguridad Contra Incendios</h1>
-            <p class="text-lg text-slate-400 max-w-2xl mx-auto">Venta, recarga anual, pruebas hidráulicas quinquenales y provisión de elementos de seguridad para consorcios, industrias y comercios.</p>
-            <div class="flex flex-wrap justify-center gap-4 pt-4">
-                <a href="#productos" class="bg-red-600 hover:bg-red-700 text-white font-bold px-8 py-4 rounded-xl shadow-lg transition flex items-center gap-2">
-                    <i class="fa-solid fa-box-open"></i> Ver Catálogo de Productos
-                </a>
-                <a href="#presupuesto" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-8 py-4 rounded-xl border border-slate-700 transition flex items-center gap-2">
-                    <i class="fa-solid fa-calculator"></i> Pedir Presupuesto Rápido
-                </a>
-            </div>
-        </div>
-    </section>
+    <main class="max-w-6xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        <!-- Columna Izquierda: Formulario de Presupuesto Automático (Ocupa 1 columna) -->
+        <section class="bg-white p-6 rounded-xl shadow-md border border-gray-100 lg:col-span-1 h-fit sticky top-6">
+            <h2 class="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
+                📋 Solicitar Cotización por WhatsApp
+            </h2>
+            <p class="text-xs text-gray-500 mb-4">
+                Completá tus datos y especificá los productos o servicios. El sistema calculará tu presupuesto automático al instante.
+            </p>
 
-    <!-- Buscador de Productos -->
-    <section id="productos" class="py-12 px-4 max-w-7xl mx-auto">
-        <div class="text-center mb-10 space-y-2">
-            <h2 class="text-3xl font-black text-white">Catálogo Maestro de Productos</h2>
-            <p class="text-slate-400 text-sm">Buscá entre más de 1.500 artículos de seguridad, matafuegos, recargas y accesorios.</p>
-        </div>
-
-        <div class="max-w-xl mx-auto mb-10">
-            <form action="/#productos" method="GET" class="flex gap-2">
-                <input type="text" name="q" value="{{ busqueda }}" placeholder="Buscar por SKU, tipo o descripción (ej: ABC, CO2, Manguera)..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-red-600 shadow-inner">
-                <button type="submit" class="bg-red-600 hover:bg-red-700 text-white font-semibold px-6 py-3 rounded-xl shadow transition flex items-center justify-center">
-                    <i class="fa-solid fa-search"></i>
-                </button>
-            </form>
-        </div>
-
-        <!-- Grid de Productos -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {% for prod in productos %}
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between hover:border-slate-700 transition shadow-lg">
-                <div>
-                    <div class="flex justify-between items-start mb-3">
-                        <span class="bg-slate-800 text-red-400 text-xs font-mono font-bold px-2.5 py-1 rounded-lg border border-slate-700">{{ prod.sku }}</span>
-                        <span class="bg-emerald-500/10 text-emerald-400 text-xs font-semibold px-2 py-0.5 rounded-md border border-emerald-500/20">{{ prod.stock }}</span>
-                    </div>
-                    <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold block mb-1">{{ prod.categoria }} / {{ prod.tipo }}</span>
-                    <h3 class="text-lg font-bold text-white mb-2 leading-snug">{{ prod.nombre }}</h3>
-                    <p class="text-xs text-slate-400 mb-4"><i class="fa-solid fa-certificate text-red-500 mr-1"></i> Norma: {{ prod.norma }}</p>
-                </div>
-                
-                <div class="pt-4 border-t border-slate-800 flex items-center justify-between">
-                    <div>
-                        <span class="text-xs text-slate-400 block">Precio Venta</span>
-                        <span class="text-xl font-black text-white">{{ prod.precio }}</span>
-                    </div>
-                    <a href="https://wa.me/5491161726657?text=Hola,%20me%20interesa%20consultar%20precio%20y%20stock%20del%20producto:%20{{ prod.sku }}%20-%20{{ prod.nombre }}" target="_blank" class="bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white font-semibold px-3.5 py-2.5 rounded-xl border border-emerald-600/30 transition text-xs flex items-center gap-1.5">
-                        <i class="fa-brands fa-whatsapp text-sm"></i> Consultar
-                    </a>
-                </div>
-            </div>
-            {% else %}
-            <div class="col-span-full text-center py-12 bg-slate-900 border border-slate-800 rounded-2xl">
-                <i class="fa-solid fa-triangle-exclamation text-amber-500 text-3xl mb-3"></i>
-                <p class="text-white font-semibold">No se encontraron productos con ese criterio de búsqueda.</p>
-                <a href="/" class="text-red-500 hover:underline text-sm mt-2 inline-block">Ver todos los productos</a>
-            </div>
-            {% endfor %}
-        </div>
-    </section>
-
-    <!-- Sección Formulario de Presupuesto Rápido (Enviando POST a Flask) -->
-    <section id="presupuesto" class="py-16 px-4 bg-slate-900/50 border-t border-slate-800">
-        <div class="max-w-xl mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl">
-            <div class="text-center mb-6">
-                <div class="inline-block bg-red-600/20 p-3 rounded-2xl border border-red-600/30 mb-3">
-                    <i class="fa-solid fa-file-invoice-dollar text-red-500 text-2xl"></i>
-                </div>
-                <h3 class="text-2xl font-black text-white">Presupuesto Rápido</h3>
-                <p class="text-xs text-slate-400 mt-1">Completá los datos y enviá la solicitud para recibir el cálculo automático.</p>
-            </div>
-            
-            <!-- El formulario ahora apunta por POST al servidor Flask -->
             <form action="/" method="POST" class="space-y-4">
                 <div>
-                    <label class="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Nombre y Apellido</label>
-                    <input type="text" name="nombre" required placeholder="Ej: Juan Bo" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-red-600">
+                    <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Tu Nombre o Apellido</label>
+                    <input type="text" name="nombre" required placeholder="Ej: Juan Bo / Reina Len" 
+                           class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none">
                 </div>
-                
+
                 <div>
-                    <label class="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Empresa / Consorcio (Opcional)</label>
-                    <input type="text" name="empresa" placeholder="Ej: Fumiga Ar" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-red-600">
+                    <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Empresa / Consorcio (Opcional)</label>
+                    <input type="text" name="empresa" placeholder="Ej: Consorcio Mitre / Estetic" 
+                           class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none">
                 </div>
-                
+
                 <div>
-                    <label class="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Servicio Requerido</label>
-                    <select name="servicio" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-red-600">
-                        <option value="Recarga anual de matafuegos">Recarga anual de matafuegos</option>
-                        <option value="Prueba hidráulica quinquenal">Prueba hidráulica quinquenal</option>
-                        <option value="Provisión de matafuegos nuevos">Provisión de matafuegos nuevos</option>
-                        <option value="Habilitación comercial / Municipal">Habilitación comercial / Municipal</option>
-                        <option value="Elementos de seguridad y cartelería">Elementos de seguridad y cartelería</option>
+                    <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Tipo de Servicio / Solicitud</label>
+                    <select name="servicio" class="w-full px-3 py-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-red-500 focus:outline-none">
+                        <option value="Recarga y Mantenimiento">Recarga y Mantenimiento</option>
+                        <option value="Prueba Hidráulica Quinquenal">Prueba Hidráulica Quinquenal</option>
+                        <option value="Habilitación Comercial / Municipal">Habilitación Comercial / Municipal</option>
+                        <option value="Compra de Matafuegos Nuevos">Compra de Matafuegos Nuevos</option>
+                        <option value="Cartelería y Elementos de Seguridad">Cartelería y Elementos de Seguridad</option>
                     </select>
                 </div>
-                
+
                 <div>
-                    <label class="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Detalles (Cantidad y Tipo)</label>
-                    <textarea name="detalles" rows="3" placeholder="Ej: 4 matafuegos abc de 10kg" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-red-600"></textarea>
+                    <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Detalles y Cantidades (¡Muy importante!)</label>
+                    <textarea name="detalles" rows="3" required 
+                              placeholder="Ej: 4 matafuegos abc de 10kg, o 2 carteles de salida y 1 luz de emergencia" 
+                              class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none"></textarea>
+                    <p class="text-[11px] text-gray-400 mt-1">Indicá cantidad, kilos (ej: 5kg, 10kg) o el accesorio que necesites.</p>
                 </div>
-                
-                <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-6 rounded-xl shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
-                    <span>Generar Presupuesto y Enviar por WhatsApp</span>
-                    <i class="fa-solid fa-arrow-right"></i>
+
+                <button type="submit" 
+                        class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg text-sm shadow transition duration-200 flex items-center justify-center gap-2">
+                    💬 Enviar Pedido a WhatsApp
                 </button>
             </form>
-        </div>
-    </section>
+        </section>
+
+        <!-- Columna Derecha: Catálogo Interactivo de Productos (Ocupa 2 columnas) -->
+        <section class="lg:col-span-2 space-y-4">
+            
+            <!-- Buscador en Catálogo -->
+            <form method="GET" action="/" class="bg-white p-4 rounded-xl shadow-md border border-gray-100 flex gap-2">
+                <input type="text" name="q" value="{{ busqueda }}" placeholder="Buscar en catálogo (ej: 10kg, cartel, luz, manguera)..." 
+                       class="flex-1 px-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none">
+                <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition">
+                    Buscar
+                </button>
+                {% if busqueda %}
+                <a href="/" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center">
+                    Limpiar
+                </a>
+                {% endif %}
+            </form>
+
+            <!-- Listado de Productos -->
+            <div class="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
+                <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
+                    <h3 class="font-bold text-gray-700 text-sm">Catálogo de Productos y Servicios Disponibles</h3>
+                    <span class="text-xs text-gray-500 bg-gray-200 px-2.5 py-1 rounded-full font-semibold">{{ total_productos }} ítems</span>
+                </div>
+
+                <div class="overflow-x-auto max-h-[600px]">
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead class="bg-gray-100 text-gray-600 uppercase text-[11px] sticky top-0">
+                            <tr>
+                                <th class="p-3">SKU</th>
+                                <th class="p-3">Categoría</th>
+                                <th class="p-3">Descripción / Producto</th>
+                                <th class="p-3">Capacidad</th>
+                                <th class="p-3 text-right">Precio Venta</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            {% for p in productos %}
+                            <tr class="hover:bg-red-50/50 transition">
+                                <td class="p-3 font-mono text-xs text-gray-500">{{ p.sku }}</td>
+                                <td class="p-3 text-xs font-semibold text-red-700">{{ p.categoria }}</td>
+                                <td class="p-3 text-gray-800 font-medium">{{ p.nombre }}</td>
+                                <td class="p-3 text-xs text-gray-600">{{ p.peso }}</td>
+                                <td class="p-3 text-right font-bold text-green-700">{{ p.precio_str }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="p-8 text-center text-gray-400">
+                                    No se encontraron productos coincidentes en el catálogo.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
 
     <!-- Footer -->
-    <footer id="contacto" class="bg-slate-950 border-t border-slate-900 py-8 px-4 text-center text-xs text-slate-500">
-        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
-            <p>© 2026 Matafuegos Seguridad. San Miguel, Provincia de Buenos Aires.</p>
-            <p class="text-slate-400"><i class="fa-brands fa-whatsapp text-emerald-500 mr-1">+54 9 11 6172-6657</i></p>
-        </div>
+    <footer class="text-center py-6 text-xs text-gray-400 border-t mt-12">
+        Matafuegos San Miguel © 2026 — Sistema de Cotización Automática para WhatsApp
     </footer>
+
 </body>
 </html>
