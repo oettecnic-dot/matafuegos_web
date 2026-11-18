@@ -1,141 +1,127 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Presupuestos y Catálogo | Matafuegos San Miguel</title>
-    <!-- Tailwind CSS CDN para un diseño moderno, limpio y profesional -->
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-50 text-gray-800 font-sans antialiased">
-
-    <!-- Header / Barra Superior -->
-    <header class="bg-red-700 text-white shadow-md">
-        <div class="max-w-6xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center">
-            <div>
-                <h1 class="text-2xl font-bold">🔥 Matafuegos & Seguridad San Miguel</h1>
-                <p class="text-red-100 text-sm">Venta, Recargas, Pruebas Hidráulicas y Habilitaciones comerciales</p>
-            </div>
-            <div class="mt-3 md:mt-0 text-sm bg-red-800 px-4 py-2 rounded-lg font-medium">
-                📲 WhatsApp Directo: +54 9 11 6172-6657
-            </div>
-        </div>
-    </header>
-
-    <main class="max-w-6xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        nombre = request.form.get('nombre', '').strip()
+        empresa = request.form.get('empresa', '').strip()
+        servicio = request.form.get('servicio', 'Recarga general')
+        detalles = request.form.get('detalles', '').strip()
         
-        <!-- Columna Izquierda: Formulario de Presupuesto Automático (Ocupa 1 columna) -->
-        <section class="bg-white p-6 rounded-xl shadow-md border border-gray-100 lg:col-span-1 h-fit sticky top-6">
-            <h2 class="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
-                📋 Solicitar Cotización por WhatsApp
-            </h2>
-            <p class="text-xs text-gray-500 mb-4">
-                Completá tus datos y especificá los productos o servicios. El sistema calculará tu presupuesto automático al instante.
-            </p>
+        texto_completo = f"{servicio} {detalles}".lower()
+        
+        # 1. Extraer cantidad numérica (por defecto 1)
+        match_cant = re.search(r'(\d+)\s*(?:matafuegos|unidades|equipos|cargas|luces|carteles)?', texto_completo)
+        cantidad = int(match_cant.group(1)) if match_cant else 1
+        
+        # 2. Extraer peso o capacidad si aplica (ej: 10kg, 5kg)
+        match_peso = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:kg|kilos|lt|lts)', texto_completo)
+        peso_buscado = match_peso.group(1).replace(',', '.') if match_peso else ""
+        
+        # Valores por defecto seguros (si es recarga de 10kg por defecto, o genérico)
+        precio_unitario_val = 27750
+        precio_str = "$27,750"
+        sku_item = "REC-0018"
+        nombre_item = "Servicio / Producto Solicitado"
+        peso_item = "General"
+        
+        # 3. Búsqueda inteligente y flexible en Google Sheets
+        try:
+            catalogo = cargar_catalogo_desde_sheets()
+            if catalogo:
+                item_encontrado = None
+                
+                # A. Si pide Luces de Emergencia
+                if "luz" in texto_completo or "luces" in texto_completo or "emergencia" in texto_completo:
+                    for p in catalogo:
+                        nombre_p = p['nombre'].lower()
+                        if "luz" in nombre_p or "emergencia" in nombre_p:
+                            item_encontrado = p
+                            break
+                
+                # B. Si pide Cartel / Cartelería / Señalización
+                elif "cartel" in texto_completo or "cartelería" in texto_completo or "señal" in texto_completo or "salida" in texto_completo:
+                    for p in catalogo:
+                        nombre_p = p['nombre'].lower()
+                        cat_p = p['categoria'].lower()
+                        if "cartel" in nombre_p or "cartel" in cat_p or "señal" in nombre_p or "salida" in nombre_p:
+                            item_encontrado = p
+                            break
+                            
+                # C. Si pide Prueba Hidráulica
+                elif "hidráulica" in texto_completo or "hidraulica" in texto_completo or "ensayo" in texto_completo:
+                    for p in catalogo:
+                        nombre_p = p['nombre'].lower()
+                        if "hidráulica" in nombre_p or "hidraulica" in nombre_p or "ensayo" in nombre_p:
+                            item_encontrado = p
+                            break
 
-            <form action="/" method="POST" class="space-y-4">
-                <div>
-                    <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Tu Nombre o Apellido</label>
-                    <input type="text" name="nombre" required placeholder="Ej: Juan Bo / Reina Len" 
-                           class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none">
-                </div>
+                # D. Si pide Recarga o Matafuegos con peso específico
+                elif "recarga" in texto_completo or "matafuego" in texto_completo:
+                    for p in catalogo:
+                        nombre_p = p['nombre'].lower()
+                        peso_p = p['peso'].lower()
+                        if peso_buscado and (peso_buscado in peso_p or peso_buscado in nombre_p):
+                            item_encontrado = p
+                            break
+                    if not item_encontrado and peso_buscado:
+                        for p in catalogo:
+                            if peso_buscado in p['peso'].lower():
+                                item_encontrado = p
+                                break
 
-                <div>
-                    <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Empresa / Consorcio (Opcional)</label>
-                    <input type="text" name="empresa" placeholder="Ej: Consorcio Mitre / Estetic" 
-                           class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none">
-                </div>
+                # E. Búsqueda libre general por palabras clave del detalle
+                if not item_encontrado:
+                    palabras = [w for w in detalles.lower().split() if len(w) > 3]
+                    for palabra in palabras:
+                        for p in catalogo:
+                            if palabra in p['nombre'].lower() or palabra in p['categoria'].lower():
+                                item_encontrado = p
+                                break
+                        if item_encontrado:
+                            break
 
-                <div>
-                    <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Tipo de Servicio / Solicitud</label>
-                    <select name="servicio" class="w-full px-3 py-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-red-500 focus:outline-none">
-                        <option value="Recarga y Mantenimiento">Recarga y Mantenimiento</option>
-                        <option value="Prueba Hidráulica Quinquenal">Prueba Hidráulica Quinquenal</option>
-                        <option value="Habilitación Comercial / Municipal">Habilitación Comercial / Municipal</option>
-                        <option value="Compra de Matafuegos Nuevos">Compra de Matafuegos Nuevos</option>
-                        <option value="Cartelería y Elementos de Seguridad">Cartelería y Elementos de Seguridad</option>
-                    </select>
-                </div>
+                # Si encontró un producto real en el catálogo, aplicamos sus datos
+                if item_encontrado:
+                    precio_unitario_val = item_encontrado['precio_val']
+                    precio_str = item_encontrado['precio_str']
+                    sku_item = item_encontrado['sku']
+                    nombre_item = item_encontrado['nombre']
+                    peso_item = item_encontrado['peso']
+                    
+        except Exception as e:
+            print(f"Error al buscar en catálogo: {e}")
 
-                <div>
-                    <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Detalles y Cantidades (¡Muy importante!)</label>
-                    <textarea name="detalles" rows="3" required 
-                              placeholder="Ej: 4 matafuegos abc de 10kg, o 2 carteles de salida y 1 luz de emergencia" 
-                              class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none"></textarea>
-                    <p class="text-[11px] text-gray-400 mt-1">Indicá cantidad, kilos (ej: 5kg, 10kg) o el accesorio que necesites.</p>
-                </div>
+        # 4. Cálculo matemático exacto
+        subtotal = precio_unitario_val * cantidad
+        
+        # 5. Construcción del bloque de presupuesto
+        presupuesto_texto = f"\n- [{sku_item}] {cantidad}x {nombre_item} ({peso_item}): ${subtotal:,.0f} (Unit: {precio_str})"
 
-                <button type="submit" 
-                        class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg text-sm shadow transition duration-200 flex items-center justify-center gap-2">
-                    💬 Enviar Pedido a WhatsApp
-                </button>
-            </form>
-        </section>
-
-        <!-- Columna Derecha: Catálogo Interactivo de Productos (Ocupa 2 columnas) -->
-        <section class="lg:col-span-2 space-y-4">
+        # 6. Armar mensaje completo para WhatsApp
+        texto = f"Hola! Soy {nombre}"
+        if empresa:
+            texto += f" de {empresa}"
+        texto += f". Solicito cotización sobre: {servicio}."
+        if detalles:
+            texto += f" Detalles: {detalles}."
             
-            <!-- Buscador en Catálogo -->
-            <form method="GET" action="/" class="bg-white p-4 rounded-xl shadow-md border border-gray-100 flex gap-2">
-                <input type="text" name="q" value="{{ busqueda }}" placeholder="Buscar en catálogo (ej: 10kg, cartel, luz, manguera)..." 
-                       class="flex-1 px-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none">
-                <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition">
-                    Buscar
-                </button>
-                {% if busqueda %}
-                <a href="/" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center">
-                    Limpiar
-                </a>
-                {% endif %}
-            </form>
-
-            <!-- Listado de Productos -->
-            <div class="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
-                <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
-                    <h3 class="font-bold text-gray-700 text-sm">Catálogo de Productos y Servicios Disponibles</h3>
-                    <span class="text-xs text-gray-500 bg-gray-200 px-2.5 py-1 rounded-full font-semibold">{{ total_productos }} ítems</span>
-                </div>
-
-                <div class="overflow-x-auto max-h-[600px]">
-                    <table class="w-full text-left border-collapse text-sm">
-                        <thead class="bg-gray-100 text-gray-600 uppercase text-[11px] sticky top-0">
-                            <tr>
-                                <th class="p-3">SKU</th>
-                                <th class="p-3">Categoría</th>
-                                <th class="p-3">Descripción / Producto</th>
-                                <th class="p-3">Capacidad</th>
-                                <th class="p-3 text-right">Precio Venta</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            {% for p in productos %}
-                            <tr class="hover:bg-red-50/50 transition">
-                                <td class="p-3 font-mono text-xs text-gray-500">{{ p.sku }}</td>
-                                <td class="p-3 text-xs font-semibold text-red-700">{{ p.categoria }}</td>
-                                <td class="p-3 text-gray-800 font-medium">{{ p.nombre }}</td>
-                                <td class="p-3 text-xs text-gray-600">{{ p.peso }}</td>
-                                <td class="p-3 text-right font-bold text-green-700">{{ p.precio_str }}</td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="5" class="p-8 text-center text-gray-400">
-                                    No se encontraron productos coincidentes en el catálogo.
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-        </section>
-
-    </main>
-
-    <!-- Footer -->
-    <footer class="text-center py-6 text-xs text-gray-400 border-t mt-12">
-        Matafuegos San Miguel © 2026 — Sistema de Cotización Automática para WhatsApp
-    </footer>
-
-</body>
-</html>
+        texto += f"\n\n*Presupuesto Automático Catálogo:*{presupuesto_texto}"
+        texto += f"\n👉 **TOTAL ESTIMADO: ${subtotal:,.0f}**"
+            
+        mensaje_encoded = urllib.parse.quote(texto)
+        whatsapp_url = f"https://wa.me/{WHATSAPP_NUMERO}?text={mensaje_encoded}"
+        
+        return redirect(whatsapp_url)
+    
+    catalogo = cargar_catalogo_desde_sheets()
+    busqueda = request.args.get('q', '').lower().strip()
+    if busqueda:
+        catalogo = [
+            p for p in catalogo 
+            if busqueda in p['nombre'].lower() or 
+               busqueda in p['sku'].lower() or 
+               busqueda in p['categoria'].lower() or
+               busqueda in p['tipo'].lower()
+        ]
+    
+    productos_visibles = catalogo[:60]
+    return render_template('index.html', productos=productos_visibles, total_productos=len(catalogo), busqueda=busqueda)
