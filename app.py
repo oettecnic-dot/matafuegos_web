@@ -25,7 +25,6 @@ def parsear_entero_precio(valor) -> int:
     if not limpio:
         return 0
 
-    # Si tiene coma o punto decimal al final (ej: 62500.00 o 62.500,00)
     if re.search(r",\d{1,2}$", limpio):
         limpio = limpio.split(",")[0]
     elif re.search(r"\.\d{1,2}$", limpio):
@@ -74,6 +73,14 @@ def cargar_catalogo_desde_sheets():
                     if not isinstance(fila, dict):
                         continue
 
+                    nombre_prod = obtener_campo(
+                        fila,
+                        "Descripción del Producto",
+                        "Descripcion del Producto",
+                        "Producto/ Variedad",
+                        "Nombre",
+                        default=""
+                    )
                     precio_raw = obtener_campo(
                         fila,
                         "Precio Venta",
@@ -84,25 +91,23 @@ def cargar_catalogo_desde_sheets():
                         default="0"
                     )
                     precio_val = parsear_entero_precio(precio_raw)
+
+                    # Descarta filas vacías, sin descripción real o sin precio válido
+                    if not nombre_prod or nombre_prod.lower() == "artículo" or precio_val <= 0:
+                        continue
+
                     precio_str = (
                         precio_raw
                         if "$" in precio_raw
-                        else (f"${precio_val:,}" if precio_val > 0 else "A consultar")
+                        else f"${precio_val:,}"
                     )
 
                     productos.append({
-                        "id": index + 1,
+                        "id": len(productos) + 1,
                         "sku": obtener_campo(fila, "SKU", "Codigo", "Código", default=f"MAT-{index+1:04d}"),
                         "categoria": obtener_campo(fila, "Categoría", "Categoria", default="General"),
                         "tipo": obtener_campo(fila, "Subcategoría / Tipo", "Subcategoria / Tipo", "Tipo", default=""),
-                        "nombre": obtener_campo(
-                            fila,
-                            "Descripción del Producto",
-                            "Descripcion del Producto",
-                            "Producto/ Variedad",
-                            "Nombre",
-                            default="Artículo"
-                        ),
+                        "nombre": nombre_prod,
                         "peso": obtener_campo(fila, "Capacidad / Medida", "Capacidad", "Medida", "Peso", default=""),
                         "stock": obtener_campo(fila, "Stock Actual", "Stock", default="Disponible"),
                         "precio_str": precio_str,
@@ -112,7 +117,7 @@ def cargar_catalogo_desde_sheets():
         except Exception as e:
             print(f"Error al leer Apps Script ({webhook_url}): {e}")
 
-    # Catálogo de respaldo si no hay respuesta del webhook o todavía no se cargó
+    # Catálogo de respaldo si no hay respuesta del webhook o no se cargaron filas válidas
     if not productos:
         productos = [
             {"sku": "MAT-0002", "categoria": "Matafuegos", "tipo": "ABC", "nombre": "Matafuego Polvo Químico Seco ABC", "peso": "5 kg", "precio_str": "$62,500", "precio_val": 62500, "norma": "IRAM"},
@@ -191,155 +196,4 @@ def buscar_producto_en_catalogo(linea_texto, catalogo):
         for palabra in palabras:
             if palabra in nombre_norm:
                 puntaje += 10
-            elif palabra in tipo_norm or palabra in cat_norm or palabra in peso_norm:
-                puntaje += 6
-
-        if peso_buscado:
-            p_norm = normalizar_texto(peso_buscado)
-            if p_norm in peso_norm or p_norm in nombre_norm:
-                puntaje += 15
-            else:
-                puntaje -= 10
-
-        if "recarga" in texto_norm and ("recarga" in nombre_norm or "recarga" in cat_norm):
-            puntaje += 12
-        if ("hidraulica" in texto_norm or "prueba" in texto_norm) and ("hidrostatica" in union_prod or "hidraulica" in union_prod):
-            puntaje += 12
-        if ("luz" in texto_norm or "emergencia" in texto_norm) and "emergencia" in nombre_norm:
-            puntaje += 10
-        if ("cartel" in texto_norm or "senal" in texto_norm) and ("cartel" in nombre_norm or "carteleria" in cat_norm):
-            puntaje += 10
-
-        if puntaje > mejor_puntaje:
-            mejor_puntaje = puntaje
-            mejor_item = prod
-
-    if mejor_item and mejor_puntaje > 0:
-        precio_unit = parsear_entero_precio(mejor_item.get("precio_val", 0))
-        subtotal = precio_unit * cantidad
-        peso_txt = f" ({mejor_item.get('peso', '')})" if mejor_item.get("peso") else ""
-        return {
-            "cantidad": cantidad,
-            "sku": mejor_item.get("sku", ""),
-            "descripcion": f"{mejor_item.get('nombre', '')}{peso_txt}".strip(),
-            "precio_unit": precio_unit,
-            "subtotal": subtotal,
-            "encontrado": True
-        }
-
-    return {
-        "cantidad": cantidad,
-        "sku": "CONSULTA",
-        "descripcion": texto_limpio or linea_texto.strip(),
-        "precio_unit": 0,
-        "subtotal": 0,
-        "encontrado": False
-    }
-
-
-def armar_cotizacion_completa(servicio_texto, detalle_texto, catalogo):
-    lineas_detalle = [
-        l.strip() for l in re.split(r"[\n,;]+", detalle_texto or "") if l.strip()
-    ]
-
-    servicio_limpio = (servicio_texto or "").strip()
-    if servicio_limpio:
-        servicio_norm = normalizar_texto(servicio_limpio)
-        detalle_norm = normalizar_texto(detalle_texto or "")
-        if servicio_norm and servicio_norm not in detalle_norm:
-            lineas_detalle.append(servicio_limpio)
-
-    items = [buscar_producto_en_catalogo(linea, catalogo) for linea in lineas_detalle]
-    total = sum(item["subtotal"] for item in items)
-    return items, total
-
-
-def armar_cotizacion(detalle_texto, catalogo):
-    return armar_cotizacion_completa("", detalle_texto, catalogo)
-
-
-def filtrar_catalogo(catalogo, consulta):
-    q_norm = normalizar_texto(consulta or "")
-    if not q_norm:
-        return catalogo
-
-    terminos = re.findall(r"[a-z0-9]+", q_norm)
-    if not terminos:
-        return catalogo
-
-    filtrados = []
-    for prod in catalogo:
-        texto_prod = " ".join([
-            normalizar_texto(str(prod.get("sku", ""))),
-            normalizar_texto(str(prod.get("categoria", ""))),
-            normalizar_texto(str(prod.get("tipo", ""))),
-            normalizar_texto(str(prod.get("nombre", ""))),
-            normalizar_texto(str(prod.get("peso", ""))),
-            normalizar_texto(str(prod.get("norma", "")))
-        ])
-        if all(t in texto_prod for t in terminos):
-            filtrados.append(prod)
-
-    return filtrados
-
-
-@app.route("/", methods=["GET", "POST"])
-def index():
-    catalogo = cargar_catalogo_desde_sheets()
-    busqueda = request.args.get("q", "").strip()
-    productos_visibles = filtrar_catalogo(catalogo, busqueda)
-
-    whatsapp_url = None
-    resumen_items = []
-    total_estimado = 0
-    mensaje_preview = ""
-
-    if request.method == "POST":
-        nombre = request.form.get("nombre", "").strip()
-        empresa_cliente = request.form.get("empresa", "").strip()
-        servicio = request.form.get("servicio", "").strip()
-        detalle = (request.form.get("detalles") or request.form.get("detalle") or "").strip()
-
-        resumen_items, total_estimado = armar_cotizacion_completa(servicio, detalle, catalogo)
-
-        lineas_msg = [
-            f"Hola *{EMPRESA_NOMBRE}*, solicito cotización:",
-            f"• *Nombre:* {nombre or 'No especificado'}",
-        ]
-        if empresa_cliente:
-            lineas_msg.append(f"• *Empresa / Consorcio:* {empresa_cliente}")
-        if servicio:
-            lineas_msg.append(f"• *Servicio / Solicitud:* {servicio}")
-
-        lineas_msg.extend(["", "*Detalle solicitado:*"])
-
-        for it in resumen_items:
-            if it["encontrado"] and it["precio_unit"] > 0:
-                lineas_msg.append(
-                    f"- {it['cantidad']}x {it['descripcion']} (${it['precio_unit']:,} c/u) = *${it['subtotal']:,}*"
-                )
-            else:
-                lineas_msg.append(f"- {it['cantidad']}x {it['descripcion']} _(a cotizar)_")
-
-        if total_estimado > 0:
-            lineas_msg.extend(["", f"*Total estimado:* *${total_estimado:,}*"])
-
-        mensaje_preview = "\n".join(lineas_msg)
-        whatsapp_url = f"https://wa.me/{WHATSAPP_NUMBER}?text={urllib.parse.quote(mensaje_preview)}"
-
-    return render_template(
-        "index.html",
-        empresa=EMPRESA_NOMBRE,
-        productos=productos_visibles,
-        busqueda=busqueda,
-        total_productos=len(productos_visibles),
-        whatsapp_url=whatsapp_url,
-        resumen_items=resumen_items,
-        total_estimado=total_estimado,
-        mensaje_preview=mensaje_preview
-    )
-
-
-if __name__ == "__main__":
-    puerto = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=puerto, debug=False)
+            elif palabra in tipo_norm or palabra in cat_norm or palabra in peso
