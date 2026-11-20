@@ -171,4 +171,75 @@ def filtrar_catalogo(catalogo, consulta):
     for prod in catalogo:
         texto_prod = " ".join([
             normalizar_texto(str(prod.get("sku", ""))),
-            normalizar_texto(str(prod
+            normalizar_texto(str(prod.get("categoria", ""))),
+            normalizar_texto(str(prod.get("tipo", ""))),
+            normalizar_texto(str(prod.get("nombre", ""))),
+            normalizar_texto(str(prod.get("peso", ""))),
+            normalizar_texto(str(prod.get("norma", "")))
+        ])
+        if all(t in texto_prod for t in terminos):
+            filtrados.append(prod)
+
+    return filtrados
+
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    catalogo = cargar_catalogo_desde_sheets()
+    busqueda = request.args.get("q", "").strip()
+    productos_visibles = filtrar_catalogo(catalogo, busqueda)
+
+    whatsapp_url = None
+    resumen_items = []
+    total_estimado = 0
+    mensaje_preview = ""
+
+    if request.method == "POST":
+        nombre = request.form.get("nombre", "").strip()
+        empresa_cliente = request.form.get("empresa", "").strip()
+        servicio = request.form.get("servicio", "").strip()
+        detalle = (request.form.get("detalles") or request.form.get("detalle") or "").strip()
+
+        resumen_items, total_estimado = armar_cotizacion(detalle, catalogo)
+
+        lineas_msg = [
+            f"Hola *{EMPRESA_NOMBRE}*, solicito cotización:",
+            f"• *Nombre:* {nombre or 'No especificado'}",
+        ]
+        if empresa_cliente:
+            lineas_msg.append(f"• *Empresa / Consorcio:* {empresa_cliente}")
+        if servicio:
+            lineas_msg.append(f"• *Servicio / Solicitud:* {servicio}")
+
+        lineas_msg.extend(["", "*Detalle solicitado:*"])
+
+        for it in resumen_items:
+            if it["encontrado"] and it["precio_unit"] > 0:
+                lineas_msg.append(
+                    f"- {it['cantidad']}x {it['descripcion']} (${it['precio_unit']:,} c/u) = *${it['subtotal']:,}*"
+                )
+            else:
+                lineas_msg.append(f"- {it['cantidad']}x {it['descripcion']} _(a cotizar)_")
+
+        if total_estimado > 0:
+            lineas_msg.extend(["", f"*Total estimado:* *${total_estimado:,}*"])
+
+        mensaje_preview = "\n".join(lineas_msg)
+        whatsapp_url = f"https://wa.me/{WHATSAPP_NUMBER}?text={urllib.parse.quote(mensaje_preview)}"
+
+    return render_template(
+        "index.html",
+        empresa=EMPRESA_NOMBRE,
+        productos=productos_visibles,
+        busqueda=busqueda,
+        total_productos=len(productos_visibles),
+        whatsapp_url=whatsapp_url,
+        resumen_items=resumen_items,
+        total_estimado=total_estimado,
+        mensaje_preview=mensaje_preview
+    )
+
+
+if __name__ == "__main__":
+    puerto = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=puerto, debug=False)
