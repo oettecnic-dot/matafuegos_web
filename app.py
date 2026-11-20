@@ -1,184 +1,213 @@
-from flask import Flask, render_template, request, redirect
-import urllib.parse
-import os
 import json
+import os
 import re
-import gspread
-from google.oauth2.service_account import Credentials
+import urllib.parse
+import urllib.request
+from flask import Flask, render_template, request
 
 app = Flask(__name__)
-app.secret_key = 'matafuegos_seguridad_consorcios_2026'
 
-# Tu número de WhatsApp de contacto comercial
-WHATSAPP_NUMERO = "5491161726657"
+WHATSAPP_NUMBER = "5491161726657"
+EMPRESA_NOMBRE = "L y L MATAGUEGOS — SEGURIDAD"
 
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 
 def cargar_catalogo_desde_sheets():
     productos = []
-    try:
-        creds = None
-        if os.environ.get('GOOGLE_CREDENTIALS_JSON'):
-            creds_json = json.loads(os.environ.get('GOOGLE_CREDENTIALS_JSON'))
-            creds = Credentials.from_service_account_info(creds_json, scopes=SCOPES)
-        elif os.path.exists('credentials.json'):
-            creds = Credentials.from_service_account_file('credentials.json', scopes=SCOPES)
-            
-        if creds:
-            client = gspread.authorize(creds)
-            sheet = client.open("Catalogo_Matafuegos_1500").sheet1
-            registros = sheet.get_all_records()
-            
-            for index, fila in enumerate(registros):
-                precio_str = str(fila.get("Precio Venta", "0"))
-                precio_num = re.sub(r'[^\d]', '', precio_str)
-                precio_val = int(precio_num) if precio_num else 0
-                
-                productos.append({
-                    "id": index + 1,
-                    "sku": str(fila.get("SKU", f"MAT-{index+1:04d}")),
-                    "categoria": str(fila.get("Categoría", "General")),
-                    "tipo": str(fila.get("Subcategoría / Tipo", "")),
-                    "nombre": str(fila.get("Descripción del Producto", "Artículo")),
-                    "peso": str(fila.get("Capacidad / Medida", "")),
-                    "stock": str(fila.get("Stock Actual", "Disponible")),
-                    "precio_str": precio_str,
-                    "precio_val": precio_val,
-                    "norma": str(fila.get("Norma / Certificación", "IRAM"))
-                })
-    except Exception as e:
-        print(f"Error al conectar con Google Sheets: {e}")
+    webhook_url = os.environ.get("CATALOG_WEBHOOK_URL", "").strip()
 
-    # Catálogo de respaldo robusto (incluye tanto 5kg como 10kg)
+    if webhook_url:
+        try:
+            req = urllib.request.Request(
+                webhook_url,
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw_data = resp.read().decode("utf-8")
+                registros = json.loads(raw_data)
+
+            if isinstance(registros, list):
+                for index, fila in enumerate(registros):
+                    if not isinstance(fila, dict):
+                        continue
+                    precio_str = str(fila.get("Precio Venta", "0")).strip()
+                    precio_num = re.sub(r"[^\d]", "", precio_str)
+                    precio_val = int(precio_num) if precio_num else 0
+
+                    productos.append({
+                        "id": index + 1,
+                        "sku": str(fila.get("SKU", f"MAT-{index+1:04d}")).strip(),
+                        "categoria": str(fila.get("Categoría", "General")).strip(),
+                        "tipo": str(fila.get("Subcategoría / Tipo", "")).strip(),
+                        "nombre": str(fila.get("Descripción del Producto", "Artículo")).strip(),
+                        "peso": str(fila.get("Capacidad / Medida", "")).strip(),
+                        "stock": str(fila.get("Stock Actual", "Disponible")).strip(),
+                        "precio_str": precio_str if precio_str else f"${precio_val:,.0f}",
+                        "precio_val": precio_val,
+                        "norma": str(fila.get("Norma / Certificación", "IRAM")).strip()
+                    })
+        except Exception as e:
+            print(f"Error al leer Apps Script ({webhook_url}): {e}")
+
+    # Catálogo de respaldo si no hay respuesta del webhook o todavía no se cargó
     if not productos:
         productos = [
             {"sku": "MAT-0002", "categoria": "Matafuegos", "tipo": "ABC", "nombre": "Matafuego Polvo Químico Seco ABC", "peso": "5 kg", "precio_str": "$62,500", "precio_val": 62500, "norma": "IRAM"},
             {"sku": "MAT-0004", "categoria": "Matafuegos", "tipo": "ABC", "nombre": "Matafuego Polvo Químico Seco ABC", "peso": "10 kg", "precio_str": "$93,840", "precio_val": 93840, "norma": "IRAM"},
+            {"sku": "REC-0015", "categoria": "Recargas", "tipo": "Mantenimiento", "nombre": "Servicio Recarga Polvo ABC 5kg", "peso": "5 kg", "precio_str": "$21,500", "precio_val": 21500, "norma": "IRAM"},
             {"sku": "REC-0018", "categoria": "Recargas", "tipo": "Mantenimiento", "nombre": "Servicio Recarga Polvo ABC 10kg", "peso": "10 kg", "precio_str": "$27,750", "precio_val": 27750, "norma": "IRAM"},
-            {"sku": "REC-0020", "categoria": "Recargas", "tipo": "Prueba Hidráulica", "nombre": "Ensayo Presión Hidrostática Quinquenal", "peso": "Universal", "precio_str": "$24,000", "precio_val": 24000, "norma": "IRAM"}
+            {"sku": "REC-0020", "categoria": "Recargas", "tipo": "Prueba Hidráulica", "nombre": "Ensayo Presión Hidrostática Quinquenal", "peso": "Universal", "precio_str": "$24,000", "precio_val": 24000, "norma": "IRAM"},
+            {"sku": "SEG-0101", "categoria": "Seguridad", "tipo": "Iluminación", "nombre": "Luz de Emergencia LED 60 Leds Autonomía 6hs", "peso": "Unidad", "precio_str": "$18,500", "precio_val": 18500, "norma": "IRAM"},
+            {"sku": "CAR-0201", "categoria": "Cartelería", "tipo": "Señalización", "nombre": "Cartel Señalización Salida / Emergencia Fotoluminiscente", "peso": "30x15 cm", "precio_str": "$6,500", "precio_val": 6500, "norma": "IRAM"},
+            {"sku": "CAR-0202", "categoria": "Cartelería", "tipo": "Señalización", "nombre": "Cartel Chapa Matafuego ABC reglamentario", "peso": "25x25 cm", "precio_str": "$5,800", "precio_val": 5800, "norma": "IRAM"},
+            {"sku": "SEG-0105", "categoria": "Seguridad", "tipo": "Accesorios", "nombre": "Soporte Baliza / Gancho Pared para Matafuego", "peso": "Unidad", "precio_str": "$4,500", "precio_val": 4500, "norma": "IRAM"}
         ]
-        
+
     return productos
 
-@app.route('/', methods=['GET', 'POST'])
+
+def normalizar_texto(texto):
+    texto = texto.lower().strip()
+    reemplazos = (
+        ("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"),
+        ("ü", "u"), ("ñ", "n")
+    )
+    for origen, destino in reemplazos:
+        texto = texto.replace(origen, destino)
+    return texto
+
+
+def buscar_producto_en_catalogo(linea_texto, catalogo):
+    texto_norm = normalizar_texto(linea_texto)
+    cantidad = 1
+    match_cant = re.search(r"\b(\d+)\b", texto_norm)
+    if match_cant:
+        cantidad = max(1, int(match_cant.group(1)))
+
+    peso_buscado = None
+    if re.search(r"\b10\s*kg\b", texto_norm):
+        peso_buscado = "10 kg"
+    elif re.search(r"\b5\s*kg\b", texto_norm):
+        peso_buscado = "5 kg"
+
+    mejor_item = None
+    mejor_puntaje = 0
+
+    for prod in catalogo:
+        nombre_norm = normalizar_texto(prod.get("nombre", ""))
+        cat_norm = normalizar_texto(prod.get("categoria", ""))
+        tipo_norm = normalizar_texto(prod.get("tipo", ""))
+        peso_norm = normalizar_texto(prod.get("peso", ""))
+        sku_norm = normalizar_texto(prod.get("sku", ""))
+
+        puntaje = 0
+        if sku_norm and sku_norm in texto_norm:
+            puntaje += 50
+
+        palabras = [p for p in re.findall(r"[a-z0-9]+", texto_norm) if len(p) > 2]
+        for palabra in palabras:
+            if palabra in nombre_norm:
+                puntaje += 10
+            elif palabra in tipo_norm or palabra in cat_norm:
+                puntaje += 6
+
+        if peso_buscado:
+            if normalizar_texto(peso_buscado) in peso_norm or normalizar_texto(peso_buscado) in nombre_norm:
+                puntaje += 15
+            else:
+                puntaje -= 10
+
+        if "recarga" in texto_norm and ("recarga" in nombre_norm or "recarga" in cat_norm):
+            puntaje += 12
+        if ("hidraulica" in texto_norm or "prueba" in texto_norm) and ("hidrostatica" in nombre_norm or "hidraulica" in tipo_norm):
+            puntaje += 12
+        if ("luz" in texto_norm or "emergencia" in texto_norm) and "emergencia" in nombre_norm:
+            puntaje += 10
+        if ("cartel" in texto_norm or "senal" in texto_norm) and ("cartel" in nombre_norm or "carteleria" in cat_norm):
+            puntaje += 10
+
+        if puntaje > mejor_puntaje:
+            mejor_puntaje = puntaje
+            mejor_item = prod
+
+    if mejor_item and mejor_puntaje > 0:
+        precio_unit = int(mejor_item.get("precio_val", 0))
+        subtotal = precio_unit * cantidad
+        return {
+            "cantidad": cantidad,
+            "sku": mejor_item.get("sku", ""),
+            "descripcion": f"{mejor_item.get('nombre', '')} ({mejor_item.get('peso', '')})".strip(),
+            "precio_unit": precio_unit,
+            "subtotal": subtotal,
+            "encontrado": True
+        }
+
+    return {
+        "cantidad": cantidad,
+        "sku": "CONSULTA",
+        "descripcion": linea_texto.strip(),
+        "precio_unit": 0,
+        "subtotal": 0,
+        "encontrado": False
+    }
+
+
+def armar_cotizacion(detalle_texto, catalogo):
+    lineas = [l.strip() for l in re.split(r"[\n,;]+", detalle_texto or "") if l.strip()]
+    items = [buscar_producto_en_catalogo(linea, catalogo) for linea in lineas]
+    total = sum(item["subtotal"] for item in items)
+    return items, total
+
+
+@app.route("/", methods=["GET", "POST"])
 def index():
-    if request.method == 'POST':
-        nombre = request.form.get('nombre', '').strip()
-        empresa = request.form.get('empresa', '').strip()
-        servicio = request.form.get('servicio', 'Recarga general')
-        detalles = request.form.get('detalles', '').strip()
-        
-        texto_completo = f"{servicio} {detalles}".lower()
-        
-        # 1. Extracción precisa de la CANTIDAD
-        match_cant = re.search(r'(\d+)\s*(?:matafuegos|unidades|equipos|cargas)?', texto_completo)
-        cantidad = int(match_cant.group(1)) if match_cant else 1
-        
-        # 2. Extracción estricta del PESO/KILOS (ej: 5, 10, 2.5)
-        match_peso = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:kg|kilos|lt|lts)', texto_completo)
-        peso_buscado = match_peso.group(1).replace(',', '.') if match_peso else "10"
-        
-        # Valores por defecto dinámicos según el peso buscado
-        precio_unitario_val = 62500 if peso_buscado == "5" else 93840
-        precio_str = "$62,500" if peso_buscado == "5" else "$93,840"
-        sku_item = "MAT-0002" if peso_buscado == "5" else "MAT-0004"
-        nombre_item = f"Matafuego Polvo Químico Seco ABC"
-        peso_item = f"{peso_buscado} kg"
-        
-        # 3. Búsqueda inteligente en Google Sheets
-        try:
-            catalogo = cargar_catalogo_desde_sheets()
-            if catalogo:
-                item_encontrado = None
-                
-                # A. Si pide Luces de Emergencia
-                if "luz" in texto_completo or "luces" in texto_completo or "emergencia" in texto_completo:
-                    for p in catalogo:
-                        if "luz" in p['nombre'].lower() or "emergencia" in p['nombre'].lower():
-                            item_encontrado = p
-                            break
-                
-                # B. Si pide Cartel / Cartelería / Salida
-                elif "cartel" in texto_completo or "cartelería" in texto_completo or "señal" in texto_completo or "salida" in texto_completo:
-                    for p in catalogo:
-                        if "cartel" in p['nombre'].lower() or "salida" in p['nombre'].lower():
-                            item_encontrado = p
-                            break
-                            
-                # C. Si pide Prueba Hidráulica
-                elif "hidráulica" in texto_completo or "hidraulica" in texto_completo or "ensayo" in texto_completo:
-                    for p in catalogo:
-                        if "hidráulica" in p['nombre'].lower() or "hidraulica" in p['nombre'].lower() or "ensayo" in p['nombre'].lower():
-                            item_encontrado = p
-                            break
-
-                # D. Búsqueda principal por Matafuegos / Recargas asociadas al peso exacto (ej: 5kg o 10kg)
-                else:
-                    for p in catalogo:
-                        nombre_p = p['nombre'].lower()
-                        peso_p = p['peso'].lower()
-                        # Verificamos que coincida el peso y el tipo (recarga o matafuego nuevo)
-                        if peso_buscado in peso_p or peso_buscado in nombre_p:
-                            # Si en el texto dice recarga, prioriza recarga; si dice compra/nuevo o solo matafuegos, prioriza venta
-                            if "recarga" in texto_completo and ("recarga" in p['categoria'].lower() or "recarga" in nombre_p):
-                                item_encontrado = p
-                                break
-                            elif "recarga" not in texto_completo and ("matafuego" in nombre_p or "abc" in nombre_p):
-                                item_encontrado = p
-                                break
-                    
-                    # Si no encontró con la condición estricta anterior, busca cualquier producto que tenga el peso exacto
-                    if not item_encontrado and peso_buscado:
-                        for p in catalogo:
-                            if peso_buscado in p['peso'].lower() or peso_buscado in p['nombre'].lower():
-                                item_encontrado = p
-                                break
-
-                if item_encontrado:
-                    precio_unitario_val = item_encontrado['precio_val']
-                    precio_str = item_encontrado['precio_str']
-                    sku_item = item_encontrado['sku']
-                    nombre_item = item_encontrado['nombre']
-                    peso_item = item_encontrado['peso']
-                    
-        except Exception as e:
-            print(f"Error al buscar en catálogo: {e}")
-
-        # 4. Cálculo matemático exacto
-        subtotal = precio_unitario_val * cantidad
-        
-        # 5. Construcción del bloque de presupuesto
-        presupuesto_texto = f"\n- [{sku_item}] {cantidad}x {nombre_item} ({peso_item}): ${subtotal:,.0f} (Unit: {precio_str})"
-
-        # 6. Armar mensaje completo para WhatsApp
-        texto = f"Hola! Soy {nombre}"
-        if empresa:
-            texto += f" de {empresa}"
-        texto += f". Solicito cotización sobre: {servicio}."
-        if detalles:
-            texto += f" Detalles: {detalles}."
-            
-        texto += f"\n\n*Presupuesto Automático Catálogo:*{presupuesto_texto}"
-        texto += f"\n👉 **TOTAL ESTIMADO: ${subtotal:,.0f}**"
-            
-        mensaje_encoded = urllib.parse.quote(texto)
-        whatsapp_url = f"https://wa.me/{WHATSAPP_NUMERO}?text={mensaje_encoded}"
-        
-        return redirect(whatsapp_url)
-    
     catalogo = cargar_catalogo_desde_sheets()
-    busqueda = request.args.get('q', '').lower().strip()
-    if busqueda:
-        catalogo = [
-            p for p in catalogo 
-            if busqueda in p['nombre'].lower() or 
-               busqueda in p['sku'].lower() or 
-               busqueda in p['categoria'].lower() or
-               busqueda in p['tipo'].lower()
-        ]
-    
-    productos_visibles = catalogo[:60]
-    return render_template('index.html', productos=productos_visibles, total_productos=len(catalogo), busqueda=busqueda)
+    whatsapp_url = None
+    resumen_items = []
+    total_estimado = 0
+    mensaje_preview = ""
 
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    if request.method == "POST":
+        cliente = request.form.get("cliente", "").strip()
+        telefono = request.form.get("telefono", "").strip()
+        localidad = request.form.get("localidad", "San Miguel").strip()
+        detalle = request.form.get("detalle", "").strip()
+
+        resumen_items, total_estimado = armar_cotizacion(detalle, catalogo)
+
+        lineas_msg = [
+            f"Hola *{EMPRESA_NOMBRE}*, solicito cotización:",
+            f"• *Cliente:* {cliente or 'No especificado'}",
+            f"• *Teléfono:* {telefono or 'No especificado'}",
+            f"• *Zona / Localidad:* {localidad or 'San Miguel'}",
+            "",
+            "*Detalle solicitado:*"
+        ]
+
+        for it in resumen_items:
+            if it["encontrado"] and it["precio_unit"] > 0:
+                lineas_msg.append(
+                    f"- {it['cantidad']}x {it['descripcion']} (${it['precio_unit']:,} c/u) = *${it['subtotal']:,}*"
+                )
+            else:
+                lineas_msg.append(f"- {it['cantidad']}x {it['descripcion']} _(a cotizar)_")
+
+        if total_estimado > 0:
+            lineas_msg.extend(["", f"*Total estimado:* *${total_estimado:,}*"])
+
+        mensaje_preview = "\n".join(lineas_msg)
+        whatsapp_url = f"https://wa.me/{WHATSAPP_NUMBER}?text={urllib.parse.quote(mensaje_preview)}"
+
+    return render_template(
+        "index.html",
+        empresa=EMPRESA_NOMBRE,
+        total_productos=len(catalogo),
+        whatsapp_url=whatsapp_url,
+        resumen_items=resumen_items,
+        total_estimado=total_estimado,
+        mensaje_preview=mensaje_preview
+    )
+
+
+if __name__ == "__main__":
+    puerto = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=puerto, debug=False)
