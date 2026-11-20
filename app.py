@@ -15,7 +15,6 @@ def extraer_precio(fila):
     for clave in ("Precio Venta", "Precio", "Precio Unitario", "Precio_Venta", "precio"):
         if clave in fila and fila[clave] not in (None, ""):
             raw = str(fila[clave]).strip()
-            # Si viene como número flotante de Sheets (ej: "62500.0"), tomamos la parte entera antes del punto decimal si no tiene miles
             if re.fullmatch(r"\d+\.0+", raw):
                 raw = raw.split(".")[0]
             digitos = re.sub(r"[^\d]", "", raw)
@@ -71,6 +70,7 @@ def cargar_catalogo_desde_sheets():
         except Exception as e:
             print(f"Error al leer Apps Script ({webhook_url}): {e}")
 
+    # Catálogo de respaldo si no hay respuesta del webhook o todavía no se cargó
     if not productos:
         productos = [
             {"sku": "MAT-0002", "categoria": "Matafuegos", "tipo": "ABC", "nombre": "Matafuego Polvo Químico Seco ABC", "peso": "5 kg", "precio_str": "$62,500", "precio_val": 62500, "norma": "IRAM"},
@@ -98,17 +98,19 @@ def normalizar_texto(texto):
     return texto
 
 
-def limpiar_cantidad_en_texto(linea_texto):
-    texto = re.sub(r"^\s*\d+\s*(?:x|u|un|unidades|matafuegos?)?\s*", "", linea_texto.strip(), flags=re.IGNORECASE)
-    return texto.strip() or linea_texto.strip()
+def extraer_cantidad_y_texto(linea_texto):
+    limpio = (linea_texto or "").strip()
+    match = re.match(r"^\s*(\d+)\s*(?:x\s*)?(.*)$", limpio, flags=re.IGNORECASE)
+    if match:
+        cantidad = max(1, int(match.group(1)))
+        resto = match.group(2).strip()
+        return cantidad, (resto if resto else limpio)
+    return 1, limpio
 
 
 def buscar_producto_en_catalogo(linea_texto, catalogo):
-    texto_norm = normalizar_texto(linea_texto)
-    cantidad = 1
-    match_cant = re.search(r"\b(\d+)\b", texto_norm)
-    if match_cant:
-        cantidad = max(1, int(match_cant.group(1)))
+    cantidad, texto_sin_cant = extraer_cantidad_y_texto(linea_texto)
+    texto_norm = normalizar_texto(texto_sin_cant)
 
     peso_buscado = None
     if re.search(r"\b10\s*kg\b", texto_norm):
@@ -161,7 +163,11 @@ def buscar_producto_en_catalogo(linea_texto, catalogo):
         subtotal = precio_unit * cantidad
         nombre_prod = mejor_item.get("nombre", "")
         peso_prod = mejor_item.get("peso", "")
-        descripcion = f"{nombre_prod} ({peso_prod})".strip() if peso_prod and peso_prod.lower() not in nombre_prod.lower() else nombre_prod
+        descripcion = (
+            f"{nombre_prod} ({peso_prod})".strip()
+            if peso_prod and peso_prod.lower() not in nombre_prod.lower()
+            else nombre_prod
+        )
         return {
             "cantidad": cantidad,
             "sku": mejor_item.get("sku", ""),
@@ -174,7 +180,7 @@ def buscar_producto_en_catalogo(linea_texto, catalogo):
     return {
         "cantidad": cantidad,
         "sku": "CONSULTA",
-        "descripcion": limpiar_cantidad_en_texto(linea_texto),
+        "descripcion": texto_sin_cant,
         "precio_unit": 0,
         "subtotal": 0,
         "encontrado": False
