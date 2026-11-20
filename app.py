@@ -11,10 +11,47 @@ WHATSAPP_NUMBER = "5491161726657"
 EMPRESA_NOMBRE = "L y L MATAGUEGOS — SEGURIDAD"
 
 
+def normalizar_texto(texto):
+    texto = str(texto or "").lower().strip()
+    reemplazos = (
+        ("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"),
+        ("ü", "u"), ("ñ", "n")
+    )
+    for origen, destino in reemplazos:
+        texto = texto.replace(origen, destino)
+    return texto
+
+
+def obtener_campo(fila, posibles_nombres, defecto=""):
+    if not isinstance(fila, dict):
+        return defecto
+    for nombre in posibles_nombres:
+        if nombre in fila and fila[nombre] not in (None, ""):
+            return str(fila[nombre]).strip()
+    mapa_norm = {normalizar_texto(k): v for k, v in fila.items()}
+    for nombre in posibles_nombres:
+        val = mapa_norm.get(normalizar_texto(nombre))
+        if val not in (None, ""):
+            return str(val).strip()
+    return defecto
+
+
 def extraer_precio(fila):
-    for clave in ("Precio Venta", "Precio", "Precio Unitario", "Precio_Venta", "precio"):
-        if clave in fila and fila[clave] not in (None, ""):
-            raw = str(fila[clave]).strip()
+    candidatos_clave = [
+        "Precio Venta", "Precio", "Precio Unitario", "Precio_Venta",
+        "precio", "precio_venta", "precio unitario", "Importe", "Valor"
+    ]
+    mapa_claves = {normalizar_texto(k): v for k, v in fila.items()} if isinstance(fila, dict) else {}
+
+    for clave in candidatos_clave:
+        val = None
+        if isinstance(fila, dict) and clave in fila:
+            val = fila[clave]
+        else:
+            val = mapa_claves.get(normalizar_texto(clave))
+
+        if val not in (None, ""):
+            raw = str(val).strip()
             if re.fullmatch(r"\d+\.0+", raw):
                 raw = raw.split(".")[0]
             digitos = re.sub(r"[^\d]", "", raw)
@@ -42,30 +79,56 @@ def cargar_catalogo_desde_sheets():
                     if not isinstance(fila, dict):
                         continue
                     precio_str, precio_val = extraer_precio(fila)
-                    nombre = str(
-                        fila.get("Descripción del Producto")
-                        or fila.get("Producto")
-                        or fila.get("Nombre")
-                        or "Artículo"
-                    ).strip()
-                    peso = str(
-                        fila.get("Capacidad / Medida")
-                        or fila.get("Capacidad")
-                        or fila.get("Medida")
-                        or ""
-                    ).strip()
+                    nombre = obtener_campo(
+                        fila,
+                        ["Descripción del Producto", "Descripcion del Producto", "Producto", "Nombre", "Articulo", "Artículo"],
+                        "Artículo"
+                    )
+                    peso = obtener_campo(
+                        fila,
+                        ["Capacidad / Medida", "Capacidad", "Medida", "Peso"],
+                        ""
+                    )
+                    sku = obtener_campo(
+                        fila,
+                        ["SKU", "Codigo", "Código", "ID"],
+                        f"MAT-{index+1:04d}"
+                    )
+                    categoria = obtener_campo(
+                        fila,
+                        ["Categoría", "Categoria", "Rubro"],
+                        "General"
+                    )
+                    tipo = obtener_campo(
+                        fila,
+                        ["Subcategoría / Tipo", "Subcategoria / Tipo", "Tipo", "Subcategoria"],
+                        ""
+                    )
+                    stock = obtener_campo(
+                        fila,
+                        ["Stock Actual", "Stock", "Disponibilidad"],
+                        "Disponible"
+                    )
+                    norma = obtener_campo(
+                        fila,
+                        ["Norma / Certificación", "Norma / Certificacion", "Norma"],
+                        "IRAM"
+                    )
+
+                    if nombre == "Artículo" and precio_val == 0 and not obtener_campo(fila, ["SKU", "Categoría", "Categoria"], ""):
+                        continue
 
                     productos.append({
                         "id": index + 1,
-                        "sku": str(fila.get("SKU") or f"MAT-{index+1:04d}").strip(),
-                        "categoria": str(fila.get("Categoría") or fila.get("Categoria") or "General").strip(),
-                        "tipo": str(fila.get("Subcategoría / Tipo") or fila.get("Tipo") or "").strip(),
+                        "sku": sku,
+                        "categoria": categoria,
+                        "tipo": tipo,
                         "nombre": nombre,
                         "peso": peso,
-                        "stock": str(fila.get("Stock Actual") or "Disponible").strip(),
+                        "stock": stock,
                         "precio_str": precio_str if precio_str else (f"${precio_val:,}" if precio_val else "A consultar"),
                         "precio_val": precio_val,
-                        "norma": str(fila.get("Norma / Certificación") or "IRAM").strip()
+                        "norma": norma
                     })
         except Exception as e:
             print(f"Error al leer Apps Script ({webhook_url}): {e}")
@@ -85,17 +148,6 @@ def cargar_catalogo_desde_sheets():
         ]
 
     return productos
-
-
-def normalizar_texto(texto):
-    texto = texto.lower().strip()
-    reemplazos = (
-        ("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"),
-        ("ü", "u"), ("ñ", "n")
-    )
-    for origen, destino in reemplazos:
-        texto = texto.replace(origen, destino)
-    return texto
 
 
 def extraer_cantidad_y_texto(linea_texto):
@@ -194,6 +246,15 @@ def armar_cotizacion(detalle_texto, catalogo):
     return items, total
 
 
+def expande_termino(termino):
+    variantes = {termino}
+    if termino.endswith("es") and len(termino) > 4:
+        variantes.add(termino[:-2])
+    if termino.endswith("s") and len(termino) > 3:
+        variantes.add(termino[:-1])
+    return variantes
+
+
 def filtrar_catalogo(catalogo, consulta):
     q_norm = normalizar_texto(consulta or "")
     if not q_norm:
@@ -213,7 +274,7 @@ def filtrar_catalogo(catalogo, consulta):
             normalizar_texto(str(prod.get("peso", ""))),
             normalizar_texto(str(prod.get("norma", "")))
         ])
-        if all(t in texto_prod for t in terminos):
+        if all(any(v in texto_prod for v in expande_termino(t)) for t in terminos):
             filtrados.append(prod)
 
     return filtrados
