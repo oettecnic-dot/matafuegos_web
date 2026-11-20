@@ -158,30 +158,60 @@ def armar_cotizacion(detalle_texto, catalogo):
     return items, total
 
 
+def filtrar_catalogo(catalogo, consulta):
+    q_norm = normalizar_texto(consulta or "")
+    if not q_norm:
+        return catalogo
+
+    terminos = re.findall(r"[a-z0-9]+", q_norm)
+    if not terminos:
+        return catalogo
+
+    filtrados = []
+    for prod in catalogo:
+        texto_prod = " ".join([
+            normalizar_texto(str(prod.get("sku", ""))),
+            normalizar_texto(str(prod.get("categoria", ""))),
+            normalizar_texto(str(prod.get("tipo", ""))),
+            normalizar_texto(str(prod.get("nombre", ""))),
+            normalizar_texto(str(prod.get("peso", ""))),
+            normalizar_texto(str(prod.get("norma", "")))
+        ])
+        if all(t in texto_prod for t in terminos):
+            filtrados.append(prod)
+
+    return filtrados
+
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     catalogo = cargar_catalogo_desde_sheets()
+    busqueda = request.args.get("q", "").strip()
+    productos_visibles = filtrar_catalogo(catalogo, busqueda)
+
     whatsapp_url = None
     resumen_items = []
     total_estimado = 0
     mensaje_preview = ""
 
     if request.method == "POST":
-        cliente = request.form.get("cliente", "").strip()
-        telefono = request.form.get("telefono", "").strip()
-        localidad = request.form.get("localidad", "San Miguel").strip()
-        detalle = request.form.get("detalle", "").strip()
+        nombre = request.form.get("nombre", "").strip()
+        empresa_cliente = request.form.get("empresa", "").strip()
+        servicio = request.form.get("servicio", "").strip()
+        detalle = (request.form.get("detalles") or request.form.get("detalle") or "").strip()
 
         resumen_items, total_estimado = armar_cotizacion(detalle, catalogo)
 
         lineas_msg = [
             f"Hola *{EMPRESA_NOMBRE}*, solicito cotización:",
-            f"• *Cliente:* {cliente or 'No especificado'}",
-            f"• *Teléfono:* {telefono or 'No especificado'}",
-            f"• *Zona / Localidad:* {localidad or 'San Miguel'}",
-            "",
-            "*Detalle solicitado:*"
+            f"• *Nombre:* {nombre or 'No especificado'}",
         ]
+        if empresa_cliente:
+            lineas_msg.append(f"• *Empresa / Consorcio:* {empresa_cliente}")
+        if servicio:
+            lineas_msg.append(f"• *Servicio / Solicitud:* {servicio}")
+
+        lineas_msg.extend(["", "*Detalle solicitado:*"])
 
         for it in resumen_items:
             if it["encontrado"] and it["precio_unit"] > 0:
@@ -200,7 +230,9 @@ def index():
     return render_template(
         "index.html",
         empresa=EMPRESA_NOMBRE,
-        total_productos=len(catalogo),
+        productos=productos_visibles,
+        busqueda=busqueda,
+        total_productos=len(productos_visibles),
         whatsapp_url=whatsapp_url,
         resumen_items=resumen_items,
         total_estimado=total_estimado,
