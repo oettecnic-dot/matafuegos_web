@@ -4,12 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>L y L MATAGUEGOS — SEGURIDAD</title>
-    <!-- Tailwind CSS CDN para un diseño moderno, limpio y profesional -->
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans antialiased">
 
-    <!-- Header / Barra Superior -->
     <header class="bg-red-700 text-white shadow-md">
         <div class="max-w-6xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center">
             <div>
@@ -23,8 +21,8 @@
     </header>
 
     <main class="max-w-6xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        <!-- Columna Izquierda: Formulario de Presupuesto Automático (Ocupa 1 columna) -->
+
+        <!-- Columna Izquierda: Formulario de Presupuesto Automático -->
         <section class="bg-white p-6 rounded-xl shadow-md border border-gray-100 lg:col-span-1 h-fit sticky top-6">
             <h2 class="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
                 📋 Solicitar Cotización por WhatsApp
@@ -36,13 +34,13 @@
             <form action="/" method="POST" class="space-y-4">
                 <div>
                     <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Tu Nombre o Apellido</label>
-                    <input type="text" name="nombre" required placeholder="Ej: Juan Bo / Reina Len" 
+                    <input type="text" name="nombre" required placeholder="Ej: Juan Bo / Reina Len"
                            class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none">
                 </div>
 
                 <div>
                     <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Empresa / Consorcio (Opcional)</label>
-                    <input type="text" name="empresa" placeholder="Ej: Consorcio Mitre / Estetic" 
+                    <input type="text" name="empresa" placeholder="Ej: Consorcio Mitre / Estetic"
                            class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none">
                 </div>
 
@@ -59,25 +57,37 @@
 
                 <div>
                     <label class="block text-xs font-semibold uppercase text-gray-600 mb-1">Detalles y Cantidades (¡Muy importante!)</label>
-                    <textarea name="detalles" rows="3" required 
-                              placeholder="Ej: 4 matafuegos abc de 10kg, o 2 carteles de salida y 1 luz de emergencia" 
+                    <textarea name="detalles" rows="3" required
+                              placeholder="Ej: 4 matafuegos abc de 10kg, o 2 carteles de salida y 1 luz de emergencia"
                               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none"></textarea>
                     <p class="text-[11px] text-gray-400 mt-1">Indicá cantidad, kilos (ej: 5kg, 10kg) o el accesorio que necesites.</p>
                 </div>
 
-                <button type="submit" 
+                <button type="submit"
                         class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg text-sm shadow transition duration-200 flex items-center justify-center gap-2">
-                    💬 Enviar Pedido a WhatsApp
+                    💬 Calcular y Preparar WhatsApp
                 </button>
             </form>
+
+            {% if whatsapp_url %}
+            <div class="mt-5 pt-4 border-t border-gray-200 space-y-3">
+                <p class="text-xs font-bold uppercase text-gray-700">Presupuesto estimado listo:</p>
+                {% if total_estimado > 0 %}
+                <p class="text-base font-bold text-red-700">Total estimado: ${{ "{:,}".format(total_estimado) }}</p>
+                {% endif %}
+                <a href="{{ whatsapp_url }}" target="_blank" rel="noopener noreferrer"
+                   class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm shadow transition flex items-center justify-center gap-2">
+                    📲 Abrir WhatsApp con el Pedido
+                </a>
+            </div>
+            {% endif %}
         </section>
 
-        <!-- Columna Derecha: Catálogo Interactivo de Productos (Ocupa 2 columnas) -->
+        <!-- Columna Derecha: Catálogo Interactivo de Productos -->
         <section class="lg:col-span-2 space-y-4">
-            
-            <!-- Buscador en Catálogo -->
+
             <form method="GET" action="/" class="bg-white p-4 rounded-xl shadow-md border border-gray-100 flex gap-2">
-                <input type="text" name="q" value="{{ busqueda }}" placeholder="Buscar en catálogo (ej: 10kg, cartel, luz, manguera)..." 
+                <input type="text" name="q" value="{{ busqueda or '' }}" placeholder="Buscar en catálogo (ej: 10kg, cartel, luz, manguera)..."
                        class="flex-1 px-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none">
                 <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition">
                     Buscar
@@ -89,7 +99,6 @@
                 {% endif %}
             </form>
 
-            <!-- Listado de Productos -->
             <div class="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
                 <div class="p-4 border-b bg-gray-50 flex justify-between items-center">
                     <h3 class="font-bold text-gray-700 text-sm">Catálogo de Productos y Servicios Disponibles</h3>
@@ -132,7 +141,6 @@
 
     </main>
 
-    <!-- Footer -->
     <footer class="text-center py-6 text-xs text-gray-400 border-t mt-12">
         L y L MATAGUEGOS — SEGURIDAD © 2026
     </footer>
