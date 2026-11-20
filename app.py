@@ -11,43 +11,6 @@ WHATSAPP_NUMBER = "5491161726657"
 EMPRESA_NOMBRE = "L y L MATAGUEGOS — SEGURIDAD"
 
 
-def parsear_entero_precio(valor) -> int:
-    if valor is None or isinstance(valor, bool):
-        return 0
-    if isinstance(valor, (int, float)):
-        return int(round(valor)) if valor > 0 else 0
-
-    texto = str(valor).strip()
-    if not texto:
-        return 0
-
-    limpio = re.sub(r"[^\d.,-]", "", texto)
-    if not limpio:
-        return 0
-
-    if re.search(r",\d{1,2}$", limpio):
-        limpio = limpio.split(",")[0]
-    elif re.search(r"\.\d{1,2}$", limpio):
-        limpio = limpio.split(".")[0]
-
-    solo_digitos = re.sub(r"[^\d]", "", limpio)
-    return int(solo_digitos) if solo_digitos else 0
-
-
-def obtener_campo(fila: dict, *claves, default=""):
-    for clave in claves:
-        if clave in fila and fila[clave] is not None and str(fila[clave]).strip() != "":
-            return str(fila[clave]).strip()
-
-    mapa_lower = {str(k).strip().lower(): v for k, v in fila.items()}
-    for clave in claves:
-        val = mapa_lower.get(str(clave).strip().lower())
-        if val is not None and str(val).strip() != "":
-            return str(val).strip()
-
-    return default
-
-
 def cargar_catalogo_desde_sheets():
     productos = []
     webhook_url = os.environ.get("CATALOG_WEBHOOK_URL", "").strip()
@@ -62,62 +25,30 @@ def cargar_catalogo_desde_sheets():
                 raw_data = resp.read().decode("utf-8")
                 registros = json.loads(raw_data)
 
-            if isinstance(registros, dict):
-                for key in ("data", "items", "productos", "records"):
-                    if isinstance(registros.get(key), list):
-                        registros = registros[key]
-                        break
-
             if isinstance(registros, list):
                 for index, fila in enumerate(registros):
                     if not isinstance(fila, dict):
                         continue
-
-                    nombre_prod = obtener_campo(
-                        fila,
-                        "Descripción del Producto",
-                        "Descripcion del Producto",
-                        "Producto/ Variedad",
-                        "Nombre",
-                        default=""
-                    )
-                    precio_raw = obtener_campo(
-                        fila,
-                        "Precio Venta",
-                        "Precio ($)",
-                        "Precio",
-                        "precio_venta",
-                        "precio",
-                        default="0"
-                    )
-                    precio_val = parsear_entero_precio(precio_raw)
-
-                    # Descarta filas vacías, sin descripción real o sin precio válido
-                    if not nombre_prod or nombre_prod.lower() == "artículo" or precio_val <= 0:
-                        continue
-
-                    precio_str = (
-                        precio_raw
-                        if "$" in precio_raw
-                        else f"${precio_val:,}"
-                    )
+                    precio_str = str(fila.get("Precio Venta", "0")).strip()
+                    precio_num = re.sub(r"[^\d]", "", precio_str)
+                    precio_val = int(precio_num) if precio_num else 0
 
                     productos.append({
-                        "id": len(productos) + 1,
-                        "sku": obtener_campo(fila, "SKU", "Codigo", "Código", default=f"MAT-{index+1:04d}"),
-                        "categoria": obtener_campo(fila, "Categoría", "Categoria", default="General"),
-                        "tipo": obtener_campo(fila, "Subcategoría / Tipo", "Subcategoria / Tipo", "Tipo", default=""),
-                        "nombre": nombre_prod,
-                        "peso": obtener_campo(fila, "Capacidad / Medida", "Capacidad", "Medida", "Peso", default=""),
-                        "stock": obtener_campo(fila, "Stock Actual", "Stock", default="Disponible"),
-                        "precio_str": precio_str,
+                        "id": index + 1,
+                        "sku": str(fila.get("SKU", f"MAT-{index+1:04d}")).strip(),
+                        "categoria": str(fila.get("Categoría", "General")).strip(),
+                        "tipo": str(fila.get("Subcategoría / Tipo", "")).strip(),
+                        "nombre": str(fila.get("Descripción del Producto", "Artículo")).strip(),
+                        "peso": str(fila.get("Capacidad / Medida", "")).strip(),
+                        "stock": str(fila.get("Stock Actual", "Disponible")).strip(),
+                        "precio_str": precio_str if precio_str else f"${precio_val:,.0f}",
                         "precio_val": precio_val,
-                        "norma": obtener_campo(fila, "Norma / Certificación", "Norma", default="IRAM")
+                        "norma": str(fila.get("Norma / Certificación", "IRAM")).strip()
                     })
         except Exception as e:
             print(f"Error al leer Apps Script ({webhook_url}): {e}")
 
-    # Catálogo de respaldo si no hay respuesta del webhook o no se cargaron filas válidas
+    # Catálogo de respaldo si no hay respuesta del webhook o todavía no se cargó
     if not productos:
         productos = [
             {"sku": "MAT-0002", "categoria": "Matafuegos", "tipo": "ABC", "nombre": "Matafuego Polvo Químico Seco ABC", "peso": "5 kg", "precio_str": "$62,500", "precio_val": 62500, "norma": "IRAM"},
@@ -135,48 +66,28 @@ def cargar_catalogo_desde_sheets():
 
 
 def normalizar_texto(texto):
-    texto = str(texto or "").lower().strip()
+    texto = texto.lower().strip()
     reemplazos = (
         ("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"),
         ("ü", "u"), ("ñ", "n")
     )
     for origen, destino in reemplazos:
         texto = texto.replace(origen, destino)
-    texto = re.sub(r"(\d+)(kg|gr|g|lts|l|cm|mm)\b", r"\1 \2", texto)
-    texto = re.sub(r"\s+", " ", texto).strip()
     return texto
 
 
-def extraer_cantidad_y_limpiar(linea_texto: str):
-    limpia = linea_texto.strip()
-    cantidad = 1
-
-    match_prefijo = re.match(r"^\s*(?:x\s*)?(\d+)\s*(?:x|\*)?\s+", limpia, re.I)
-    if match_prefijo:
-        cantidad = max(1, int(match_prefijo.group(1)))
-        limpia = limpia[match_prefijo.end():].strip()
-    else:
-        match_num = re.search(r"\b(\d+)\b", limpia)
-        if match_num:
-            cantidad = max(1, int(match_num.group(1)))
-
-    return cantidad, limpia
-
-
 def buscar_producto_en_catalogo(linea_texto, catalogo):
-    cantidad, texto_limpio = extraer_cantidad_y_limpiar(linea_texto)
-    texto_norm = normalizar_texto(texto_limpio)
+    texto_norm = normalizar_texto(linea_texto)
+    cantidad = 1
+    match_cant = re.search(r"\b(\d+)\b", texto_norm)
+    if match_cant:
+        cantidad = max(1, int(match_cant.group(1)))
 
     peso_buscado = None
     if re.search(r"\b10\s*kg\b", texto_norm):
         peso_buscado = "10 kg"
     elif re.search(r"\b5\s*kg\b", texto_norm):
         peso_buscado = "5 kg"
-
-    palabras = [
-        p for p in re.findall(r"[a-z0-9]+", texto_norm)
-        if len(p) >= 2 or p.isdigit()
-    ]
 
     mejor_item = None
     mejor_puntaje = 0
@@ -187,13 +98,77 @@ def buscar_producto_en_catalogo(linea_texto, catalogo):
         tipo_norm = normalizar_texto(prod.get("tipo", ""))
         peso_norm = normalizar_texto(prod.get("peso", ""))
         sku_norm = normalizar_texto(prod.get("sku", ""))
-        union_prod = f"{nombre_norm} {cat_norm} {tipo_norm} {peso_norm}"
 
         puntaje = 0
         if sku_norm and sku_norm in texto_norm:
             puntaje += 50
 
+        palabras = [p for p in re.findall(r"[a-z0-9]+", texto_norm) if len(p) > 2]
         for palabra in palabras:
             if palabra in nombre_norm:
                 puntaje += 10
-            elif palabra in tipo_norm or palabra in cat_norm or palabra in peso
+            elif palabra in tipo_norm or palabra in cat_norm or palabra in peso_norm:
+                puntaje += 6
+
+        if peso_buscado:
+            if normalizar_texto(peso_buscado) in peso_norm or normalizar_texto(peso_buscado) in nombre_norm:
+                puntaje += 15
+            else:
+                puntaje -= 10
+
+        if "recarga" in texto_norm and ("recarga" in nombre_norm or "recarga" in cat_norm):
+            puntaje += 12
+        if ("hidraulica" in texto_norm or "prueba" in texto_norm) and ("hidrostatica" in nombre_norm or "hidraulica" in tipo_norm):
+            puntaje += 12
+        if ("luz" in texto_norm or "emergencia" in texto_norm) and "emergencia" in nombre_norm:
+            puntaje += 10
+        if ("cartel" in texto_norm or "senal" in texto_norm) and ("cartel" in nombre_norm or "carteleria" in cat_norm):
+            puntaje += 10
+
+        if puntaje > mejor_puntaje:
+            mejor_puntaje = puntaje
+            mejor_item = prod
+
+    if mejor_item and mejor_puntaje > 0:
+        precio_unit = int(mejor_item.get("precio_val", 0))
+        subtotal = precio_unit * cantidad
+        return {
+            "cantidad": cantidad,
+            "sku": mejor_item.get("sku", ""),
+            "descripcion": f"{mejor_item.get('nombre', '')} ({mejor_item.get('peso', '')})".strip(),
+            "precio_unit": precio_unit,
+            "subtotal": subtotal,
+            "encontrado": True
+        }
+
+    return {
+        "cantidad": cantidad,
+        "sku": "CONSULTA",
+        "descripcion": linea_texto.strip(),
+        "precio_unit": 0,
+        "subtotal": 0,
+        "encontrado": False
+    }
+
+
+def armar_cotizacion(detalle_texto, catalogo):
+    lineas = [l.strip() for l in re.split(r"[\n,;]+", detalle_texto or "") if l.strip()]
+    items = [buscar_producto_en_catalogo(linea, catalogo) for linea in lineas]
+    total = sum(item["subtotal"] for item in items)
+    return items, total
+
+
+def filtrar_catalogo(catalogo, consulta):
+    q_norm = normalizar_texto(consulta or "")
+    if not q_norm:
+        return catalogo
+
+    terminos = re.findall(r"[a-z0-9]+", q_norm)
+    if not terminos:
+        return catalogo
+
+    filtrados = []
+    for prod in catalogo:
+        texto_prod = " ".join([
+            normalizar_texto(str(prod.get("sku", ""))),
+            normalizar_texto(str(prod
