@@ -11,6 +11,19 @@ WHATSAPP_NUMBER = "5491161726657"
 EMPRESA_NOMBRE = "L y L MATAGUEGOS — SEGURIDAD"
 
 
+def extraer_precio(fila):
+    for clave in ("Precio Venta", "Precio", "Precio Unitario", "Precio_Venta", "precio"):
+        if clave in fila and fila[clave] not in (None, ""):
+            raw = str(fila[clave]).strip()
+            # Si viene como número flotante de Sheets (ej: "62500.0"), tomamos la parte entera antes del punto decimal si no tiene miles
+            if re.fullmatch(r"\d+\.0+", raw):
+                raw = raw.split(".")[0]
+            digitos = re.sub(r"[^\d]", "", raw)
+            if digitos:
+                return raw, int(digitos)
+    return "", 0
+
+
 def cargar_catalogo_desde_sheets():
     productos = []
     webhook_url = os.environ.get("CATALOG_WEBHOOK_URL", "").strip()
@@ -29,26 +42,35 @@ def cargar_catalogo_desde_sheets():
                 for index, fila in enumerate(registros):
                     if not isinstance(fila, dict):
                         continue
-                    precio_str = str(fila.get("Precio Venta", "0")).strip()
-                    precio_num = re.sub(r"[^\d]", "", precio_str)
-                    precio_val = int(precio_num) if precio_num else 0
+                    precio_str, precio_val = extraer_precio(fila)
+                    nombre = str(
+                        fila.get("Descripción del Producto")
+                        or fila.get("Producto")
+                        or fila.get("Nombre")
+                        or "Artículo"
+                    ).strip()
+                    peso = str(
+                        fila.get("Capacidad / Medida")
+                        or fila.get("Capacidad")
+                        or fila.get("Medida")
+                        or ""
+                    ).strip()
 
                     productos.append({
                         "id": index + 1,
-                        "sku": str(fila.get("SKU", f"MAT-{index+1:04d}")).strip(),
-                        "categoria": str(fila.get("Categoría", "General")).strip(),
-                        "tipo": str(fila.get("Subcategoría / Tipo", "")).strip(),
-                        "nombre": str(fila.get("Descripción del Producto", "Artículo")).strip(),
-                        "peso": str(fila.get("Capacidad / Medida", "")).strip(),
-                        "stock": str(fila.get("Stock Actual", "Disponible")).strip(),
-                        "precio_str": precio_str if precio_str else f"${precio_val:,.0f}",
+                        "sku": str(fila.get("SKU") or f"MAT-{index+1:04d}").strip(),
+                        "categoria": str(fila.get("Categoría") or fila.get("Categoria") or "General").strip(),
+                        "tipo": str(fila.get("Subcategoría / Tipo") or fila.get("Tipo") or "").strip(),
+                        "nombre": nombre,
+                        "peso": peso,
+                        "stock": str(fila.get("Stock Actual") or "Disponible").strip(),
+                        "precio_str": precio_str if precio_str else (f"${precio_val:,}" if precio_val else "A consultar"),
                         "precio_val": precio_val,
-                        "norma": str(fila.get("Norma / Certificación", "IRAM")).strip()
+                        "norma": str(fila.get("Norma / Certificación") or "IRAM").strip()
                     })
         except Exception as e:
             print(f"Error al leer Apps Script ({webhook_url}): {e}")
 
-    # Catálogo de respaldo si no hay respuesta del webhook o todavía no se cargó
     if not productos:
         productos = [
             {"sku": "MAT-0002", "categoria": "Matafuegos", "tipo": "ABC", "nombre": "Matafuego Polvo Químico Seco ABC", "peso": "5 kg", "precio_str": "$62,500", "precio_val": 62500, "norma": "IRAM"},
@@ -74,6 +96,11 @@ def normalizar_texto(texto):
     for origen, destino in reemplazos:
         texto = texto.replace(origen, destino)
     return texto
+
+
+def limpiar_cantidad_en_texto(linea_texto):
+    texto = re.sub(r"^\s*\d+\s*(?:x|u|un|unidades|matafuegos?)?\s*", "", linea_texto.strip(), flags=re.IGNORECASE)
+    return texto.strip() or linea_texto.strip()
 
 
 def buscar_producto_en_catalogo(linea_texto, catalogo):
@@ -103,7 +130,7 @@ def buscar_producto_en_catalogo(linea_texto, catalogo):
         if sku_norm and sku_norm in texto_norm:
             puntaje += 50
 
-        palabras = [p for p in re.findall(r"[a-z0-9]+", texto_norm) if len(p) > 2]
+        palabras = [p for p in re.findall(r"[a-z0-9]+", texto_norm) if len(p) > 2 and p != "kg"]
         for palabra in palabras:
             if palabra in nombre_norm:
                 puntaje += 10
@@ -132,10 +159,13 @@ def buscar_producto_en_catalogo(linea_texto, catalogo):
     if mejor_item and mejor_puntaje > 0:
         precio_unit = int(mejor_item.get("precio_val", 0))
         subtotal = precio_unit * cantidad
+        nombre_prod = mejor_item.get("nombre", "")
+        peso_prod = mejor_item.get("peso", "")
+        descripcion = f"{nombre_prod} ({peso_prod})".strip() if peso_prod and peso_prod.lower() not in nombre_prod.lower() else nombre_prod
         return {
             "cantidad": cantidad,
             "sku": mejor_item.get("sku", ""),
-            "descripcion": f"{mejor_item.get('nombre', '')} ({mejor_item.get('peso', '')})".strip(),
+            "descripcion": descripcion,
             "precio_unit": precio_unit,
             "subtotal": subtotal,
             "encontrado": True
@@ -144,7 +174,7 @@ def buscar_producto_en_catalogo(linea_texto, catalogo):
     return {
         "cantidad": cantidad,
         "sku": "CONSULTA",
-        "descripcion": linea_texto.strip(),
+        "descripcion": limpiar_cantidad_en_texto(linea_texto),
         "precio_unit": 0,
         "subtotal": 0,
         "encontrado": False
