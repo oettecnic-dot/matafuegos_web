@@ -166,10 +166,27 @@ def buscar_producto_en_catalogo(linea_texto, catalogo, servicio_contexto=""):
     texto_norm = normalizar_texto(texto_limpio)
     servicio_norm = normalizar_texto(servicio_contexto)
 
-    menciona_matafuego = "matafuego" in texto_norm or "matafuegos" in texto_norm or "extintor" in texto_norm
-    es_recarga_explicita = "recarga" in texto_norm
-    es_hidraulica_explicita = "hidraulica" in texto_norm or "hidrostatica" in texto_norm or "prueba" in texto_norm
-    es_compra_contexto = ("compra" in servicio_norm or "nuevo" in servicio_norm or "nuevos" in servicio_norm)
+    es_hidraulica = (
+        "hidraulica" in texto_norm
+        or "hidrostatica" in texto_norm
+        or "prueba" in texto_norm
+        or "hidraulica" in servicio_norm
+        or "hidrostatica" in servicio_norm
+    )
+    es_recarga = (
+        ("recarga" in texto_norm or "recarga" in servicio_norm)
+        and not es_hidraulica
+    )
+    es_compra = (
+        ("compra" in servicio_norm or "nuevo" in servicio_norm or "nuevos" in servicio_norm)
+        and not es_hidraulica
+        and not es_recarga
+    )
+    menciona_matafuego = (
+        "matafuego" in texto_norm
+        or "matafuegos" in texto_norm
+        or "extintor" in texto_norm
+    )
 
     peso_buscado = None
     if re.search(r"\b10\s*kg\b", texto_norm):
@@ -204,35 +221,31 @@ def buscar_producto_en_catalogo(linea_texto, catalogo, servicio_contexto=""):
             elif palabra in tipo_norm or palabra in cat_norm or palabra in peso_norm:
                 puntaje += 6
 
-        if peso_buscado:
-            p_norm = normalizar_texto(peso_buscado)
-            if p_norm in peso_norm or p_norm in nombre_norm:
-                puntaje += 15
-            else:
-                puntaje -= 10
-
-        # Si pide matafuego y no pide recarga explícita, prioriza equipo nuevo (categoría Matafuegos)
-        if menciona_matafuego and not es_recarga_explicita and not es_hidraulica_explicita:
-            if "matafuegos" in cat_norm or ("matafuego" in nombre_norm and "recarga" not in nombre_norm):
-                puntaje += 25
-            if "recarga" in cat_norm or "recarga" in nombre_norm:
-                puntaje -= 25
-
-        if es_compra_contexto and not es_recarga_explicita:
-            if "matafuegos" in cat_norm:
-                puntaje += 15
-            if "recarga" in cat_norm or "recarga" in nombre_norm:
-                puntaje -= 15
-
-        if es_recarga_explicita:
-            if "recarga" in nombre_norm or "recarga" in cat_norm:
-                puntaje += 25
-            elif "matafuegos" in cat_norm:
-                puntaje -= 15
-
-        if es_hidraulica_explicita:
+        if es_hidraulica:
             if "hidrostatica" in union_prod or "hidraulica" in union_prod:
-                puntaje += 25
+                puntaje += 40
+            if "matafuegos" in cat_norm:
+                puntaje -= 30
+            if "recarga" in nombre_norm and "hidrostatica" not in nombre_norm:
+                puntaje -= 20
+        else:
+            if peso_buscado:
+                p_norm = normalizar_texto(peso_buscado)
+                if p_norm in peso_norm or p_norm in nombre_norm:
+                    puntaje += 15
+                else:
+                    puntaje -= 10
+
+            if es_recarga:
+                if "recarga" in nombre_norm or "recarga" in cat_norm:
+                    puntaje += 25
+                elif "matafuegos" in cat_norm:
+                    puntaje -= 15
+            elif menciona_matafuego or es_compra:
+                if "matafuegos" in cat_norm or ("matafuego" in nombre_norm and "recarga" not in nombre_norm):
+                    puntaje += 25
+                if "recarga" in cat_norm or "recarga" in nombre_norm:
+                    puntaje -= 25
 
         if ("luz" in texto_norm or "emergencia" in texto_norm) and "emergencia" in nombre_norm:
             puntaje += 15
@@ -271,24 +284,17 @@ def armar_cotizacion_completa(servicio_texto, detalle_texto, catalogo):
         l.strip() for l in re.split(r"[\n,;]+", detalle_texto or "") if l.strip()
     ]
 
-    items = [
-        buscar_producto_en_catalogo(linea, catalogo, servicio_contexto=servicio_texto)
-        for linea in lineas_detalle
-    ]
-
-    servicio_limpio = (servicio_texto or "").strip()
-    servicio_norm = normalizar_texto(servicio_limpio)
-    detalle_norm = normalizar_texto(detalle_texto or "")
-    servicios_generales = ("compra", "nuevo", "nuevos", "recarga", "mantenimiento", "venta")
-
-    if (
-        servicio_limpio
-        and servicio_norm not in detalle_norm
-        and not any(palabra in servicio_norm for palabra in servicios_generales)
-    ):
-        item_serv = buscar_producto_en_catalogo(servicio_limpio, catalogo, servicio_contexto=servicio_limpio)
-        if item_serv["encontrado"] and item_serv["precio_unit"] > 0:
-            items.append(item_serv)
+    if lineas_detalle:
+        items = [
+            buscar_producto_en_catalogo(linea, catalogo, servicio_contexto=servicio_texto)
+            for linea in lineas_detalle
+        ]
+    else:
+        servicio_limpio = (servicio_texto or "").strip()
+        items = (
+            [buscar_producto_en_catalogo(servicio_limpio, catalogo, servicio_contexto=servicio_limpio)]
+            if servicio_limpio else []
+        )
 
     total = sum(item["subtotal"] for item in items)
     return items, total
