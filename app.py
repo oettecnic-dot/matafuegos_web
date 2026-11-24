@@ -92,7 +92,6 @@ def cargar_catalogo_desde_sheets():
                     )
                     precio_val = parsear_entero_precio(precio_raw)
 
-                    # Descarta filas vacías, sin descripción real o sin precio válido
                     if not nombre_prod or nombre_prod.lower() == "artículo" or precio_val <= 0:
                         continue
 
@@ -117,7 +116,6 @@ def cargar_catalogo_desde_sheets():
         except Exception as e:
             print(f"Error al leer Apps Script ({webhook_url}): {e}")
 
-    # Catálogo de respaldo si no hay respuesta del webhook o no se cargaron filas válidas
     if not productos:
         productos = [
             {"sku": "MAT-0002", "categoria": "Matafuegos", "tipo": "ABC", "nombre": "Matafuego Polvo Químico Seco ABC", "peso": "5 kg", "precio_str": "$62,500", "precio_val": 62500, "norma": "IRAM"},
@@ -163,9 +161,14 @@ def extraer_cantidad_y_limpiar(linea_texto: str):
     return cantidad, limpia
 
 
-def buscar_producto_en_catalogo(linea_texto, catalogo):
+def buscar_producto_en_catalogo(linea_texto, catalogo, servicio_contexto=""):
     cantidad, texto_limpio = extraer_cantidad_y_limpiar(linea_texto)
     texto_norm = normalizar_texto(texto_limpio)
+    servicio_norm = normalizar_texto(servicio_contexto)
+
+    es_compra_nueva = ("compra" in servicio_norm or "nuevo" in servicio_norm or "nuevos" in servicio_norm) and "recarga" not in texto_norm
+    es_recarga = "recarga" in texto_norm or ("recarga" in servicio_norm and "matafuego" in texto_norm)
+    es_hidraulica = "hidraulica" in texto_norm or "prueba" in texto_norm
 
     peso_buscado = None
     if re.search(r"\b10\s*kg\b", texto_norm):
@@ -173,9 +176,10 @@ def buscar_producto_en_catalogo(linea_texto, catalogo):
     elif re.search(r"\b5\s*kg\b", texto_norm):
         peso_buscado = "5 kg"
 
+    stopwords = {"de", "del", "la", "el", "los", "las", "para", "con", "por", "un", "una"}
     palabras = [
         p for p in re.findall(r"[a-z0-9]+", texto_norm)
-        if len(p) >= 2 or p.isdigit()
+        if (len(p) >= 2 or p.isdigit()) and p not in stopwords
     ]
 
     mejor_item = None
@@ -206,20 +210,33 @@ def buscar_producto_en_catalogo(linea_texto, catalogo):
             else:
                 puntaje -= 10
 
-        if "recarga" in texto_norm and ("recarga" in nombre_norm or "recarga" in cat_norm):
-            puntaje += 12
-        if ("hidraulica" in texto_norm or "prueba" in texto_norm) and ("hidrostatica" in union_prod or "hidraulica" in union_prod):
-            puntaje += 12
+        # Diferencia compra de matafuegos nuevos vs. recarga/mantenimiento
+        if es_compra_nueva:
+            if "matafuegos" in cat_norm or ("matafuego" in nombre_norm and "recarga" not in nombre_norm):
+                puntaje += 25
+            if "recarga" in cat_norm or "recarga" in nombre_norm:
+                puntaje -= 25
+
+        if es_recarga:
+            if "recarga" in nombre_norm or "recarga" in cat_norm:
+                puntaje += 25
+            elif "matafuegos" in cat_norm:
+                puntaje -= 15
+
+        if es_hidraulica:
+            if "hidrostatica" in union_prod or "hidraulica" in union_prod:
+                puntaje += 25
+
         if ("luz" in texto_norm or "emergencia" in texto_norm) and "emergencia" in nombre_norm:
-            puntaje += 10
+            puntaje += 15
         if ("cartel" in texto_norm or "senal" in texto_norm) and ("cartel" in nombre_norm or "carteleria" in cat_norm):
-            puntaje += 10
+            puntaje += 15
 
         if puntaje > mejor_puntaje:
             mejor_puntaje = puntaje
             mejor_item = prod
 
-    if mejor_item and mejor_puntaje > 0:
+    if mejor_item and mejor_puntaje >= 15:
         precio_unit = parsear_entero_precio(mejor_item.get("precio_val", 0))
         subtotal = precio_unit * cantidad
         peso_txt = f" ({mejor_item.get('peso', '')})" if mejor_item.get("peso") else ""
@@ -247,14 +264,27 @@ def armar_cotizacion_completa(servicio_texto, detalle_texto, catalogo):
         l.strip() for l in re.split(r"[\n,;]+", detalle_texto or "") if l.strip()
     ]
 
-    servicio_limpio = (servicio_texto or "").strip()
-    if servicio_limpio:
-        servicio_norm = normalizar_texto(servicio_limpio)
-        detalle_norm = normalizar_texto(detalle_texto or "")
-        if servicio_norm and servicio_norm not in detalle_norm:
-            lineas_detalle.append(servicio_limpio)
+    items = [
+        buscar_producto_en_catalogo(linea, catalogo, servicio_contexto=servicio_texto)
+        for linea in lineas_detalle
+    ]
 
-    items = [buscar_producto_en_catalogo(linea, catalogo) for linea in lineas_detalle]
+    # Solo agrega servicio como ítem si es un servicio específico con precio (ej. Prueba Hidráulica)
+    # y NO una categoría general como "Compra de Matafuegos Nuevos" o "Recarga y Mantenimiento"
+    servicio_limpio = (servicio_texto or "").strip()
+    servicio_norm = normalizar_texto(servicio_limpio)
+    detalle_norm = normalizar_texto(detalle_texto or "")
+    servicios_generales = ("compra", "nuevo", "nuevos", "recarga", "mantenimiento", "venta")
+
+    if (
+        servicio_limpio
+        and servicio_norm not in detalle_norm
+        and not any(palabra in servicio_norm for palabra in servicios_generales)
+    ):
+        item_serv = buscar_producto_en_catalogo(servicio_limpio, catalogo, servicio_contexto=servicio_limpio)
+        if item_serv["encontrado"] and item_serv["precio_unit"] > 0:
+            items.append(item_serv)
+
     total = sum(item["subtotal"] for item in items)
     return items, total
 
