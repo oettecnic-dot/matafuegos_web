@@ -166,9 +166,10 @@ def buscar_producto_en_catalogo(linea_texto, catalogo, servicio_contexto=""):
     texto_norm = normalizar_texto(texto_limpio)
     servicio_norm = normalizar_texto(servicio_contexto)
 
-    es_compra_nueva = ("compra" in servicio_norm or "nuevo" in servicio_norm or "nuevos" in servicio_norm) and "recarga" not in texto_norm
-    es_recarga = "recarga" in texto_norm or ("recarga" in servicio_norm and "matafuego" in texto_norm)
-    es_hidraulica = "hidraulica" in texto_norm or "prueba" in texto_norm
+    menciona_matafuego = "matafuego" in texto_norm or "matafuegos" in texto_norm or "extintor" in texto_norm
+    es_recarga_explicita = "recarga" in texto_norm
+    es_hidraulica_explicita = "hidraulica" in texto_norm or "hidrostatica" in texto_norm or "prueba" in texto_norm
+    es_compra_contexto = ("compra" in servicio_norm or "nuevo" in servicio_norm or "nuevos" in servicio_norm)
 
     peso_buscado = None
     if re.search(r"\b10\s*kg\b", texto_norm):
@@ -210,20 +211,26 @@ def buscar_producto_en_catalogo(linea_texto, catalogo, servicio_contexto=""):
             else:
                 puntaje -= 10
 
-        # Diferencia compra de matafuegos nuevos vs. recarga/mantenimiento
-        if es_compra_nueva:
+        # Si pide matafuego y no pide recarga explícita, prioriza equipo nuevo (categoría Matafuegos)
+        if menciona_matafuego and not es_recarga_explicita and not es_hidraulica_explicita:
             if "matafuegos" in cat_norm or ("matafuego" in nombre_norm and "recarga" not in nombre_norm):
                 puntaje += 25
             if "recarga" in cat_norm or "recarga" in nombre_norm:
                 puntaje -= 25
 
-        if es_recarga:
+        if es_compra_contexto and not es_recarga_explicita:
+            if "matafuegos" in cat_norm:
+                puntaje += 15
+            if "recarga" in cat_norm or "recarga" in nombre_norm:
+                puntaje -= 15
+
+        if es_recarga_explicita:
             if "recarga" in nombre_norm or "recarga" in cat_norm:
                 puntaje += 25
             elif "matafuegos" in cat_norm:
                 puntaje -= 15
 
-        if es_hidraulica:
+        if es_hidraulica_explicita:
             if "hidrostatica" in union_prod or "hidraulica" in union_prod:
                 puntaje += 25
 
@@ -269,8 +276,6 @@ def armar_cotizacion_completa(servicio_texto, detalle_texto, catalogo):
         for linea in lineas_detalle
     ]
 
-    # Solo agrega servicio como ítem si es un servicio específico con precio (ej. Prueba Hidráulica)
-    # y NO una categoría general como "Compra de Matafuegos Nuevos" o "Recarga y Mantenimiento"
     servicio_limpio = (servicio_texto or "").strip()
     servicio_norm = normalizar_texto(servicio_limpio)
     detalle_norm = normalizar_texto(detalle_texto or "")
